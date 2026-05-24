@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Environment (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma local DB
+apps/backend/prisma/dev.db
+apps/backend/prisma/dev.db-journal
+
+# Uploaded files (deleted after transcription in production)
+apps/backend/uploads/*
+!apps/backend/uploads/.gitkeep
+
+# pnpm store
+.pnpm-store/

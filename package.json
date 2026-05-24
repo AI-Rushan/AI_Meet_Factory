@@ -1,0 +1,13 @@
+{
+  "name": "my-meeting-ai",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:backend": "pnpm --filter @meeting-ai/backend dev",
+    "dev:frontend": "pnpm --filter @meeting-ai/frontend dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format"
+  }
+}

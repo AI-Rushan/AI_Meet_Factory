@@ -1,0 +1,351 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  OWNER
+  MEMBER
+}
+
+enum MeetingStatus {
+  CREATED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum RunStatus {
+  pending
+  running
+  completed
+  failed
+  partial_failed
+}
+
+enum StepStatus {
+  started
+  success
+  failed
+}
+
+enum ExportTarget {
+  TELEGRAM
+  EMAIL
+}
+
+enum ModelPurpose {
+  transcription
+  postprocessing
+}
+
+enum WorkspaceKind {
+  PERSONAL
+  TEAM
+}
+
+enum ExportStatus {
+  queued
+  success
+  failed
+}
+
+enum SubscriptionStatus {
+  trial
+  active
+  canceled
+  expired
+}
+
+enum BillingPeriod {
+  monthly
+  yearly
+}
+
+enum ProcessingStepName {
+  file_received
+  transcription_requested
+  transcription_completed
+  source_deleted
+  speakers_identified
+  summary_completed
+  tasks_extracted
+  meeting_qa_prepared
+  results_saved
+  processing_completed
+}
+
+model User {
+  id                 String        @id @default(cuid())
+  email              String        @unique
+  name               String?
+  passwordHash       String
+  isAdmin            Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  memberships        Membership[]
+  questions          MeetingQuestion[]
+  runs               MeetingProcessingRun[]
+  subscriptions      Subscription[]
+  personalWorkspace  Workspace?    @relation("PersonalWorkspaceOwner")
+  exportLogs         ExportLog[]
+  processingStepLogs ProcessingStepLog[]
+  createdMeetings    Meeting[]     @relation("MeetingCreatedBy")
+}
+
+model Workspace {
+  id                  String       @id @default(cuid())
+  name                String
+  kind                WorkspaceKind @default(PERSONAL)
+  personalOwnerUserId String?      @unique
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  memberships         Membership[]
+  meetings            Meeting[]
+  subscriptions       Subscription[]
+  runs                MeetingProcessingRun[]
+
+  personalOwner User? @relation("PersonalWorkspaceOwner", fields: [personalOwnerUserId], references: [id], onDelete: SetNull)
+
+  @@index([kind])
+}
+
+model Membership {
+  id          String         @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        MembershipRole @default(MEMBER)
+  createdAt   DateTime       @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Meeting {
+  id                 String               @id @default(cuid())
+  workspaceId        String
+  createdByUserId    String?
+  title              String
+  status             MeetingStatus        @default(CREATED)
+  sourceFilename     String?
+  sourceMimeType     String?
+  sourceDurationSec  Int?
+  sourceTempPath     String?
+  processingError    String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy     User?                @relation("MeetingCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  transcript    Transcript?
+  speakers      Speaker[]
+  summary       Summary?
+  tasks         TaskItem[]
+  questions     MeetingQuestion[]
+  exports       ExportLog[]
+  runs          MeetingProcessingRun[]
+
+  @@index([workspaceId, createdAt])
+  @@index([createdByUserId])
+}
+
+model Transcript {
+  id         String              @id @default(cuid())
+  meetingId  String              @unique
+  language   String?
+  rawText    String
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  meeting  Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  segments TranscriptSegment[]
+}
+
+model TranscriptSegment {
+  id            String     @id @default(cuid())
+  transcriptId  String
+  speakerId     String?
+  startSec      Float
+  endSec        Float
+  text          String
+  segmentOrder  Int
+
+  transcript Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  speaker    Speaker?   @relation(fields: [speakerId], references: [id], onDelete: SetNull)
+
+  @@index([transcriptId, segmentOrder])
+  @@index([speakerId])
+}
+
+model Speaker {
+  id            String   @id @default(cuid())
+  meetingId     String
+  speakerKey    String
+  autoLabel     String
+  suggestedName String?
+  confirmedName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  meeting   Meeting              @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  segments  TranscriptSegment[]
+
+  @@unique([meetingId, speakerKey])
+  @@index([meetingId])
+}
+
+model Summary {
+  id         String   @id @default(cuid())
+  meetingId  String   @unique
+  text       String
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model TaskItem {
+  id            String   @id @default(cuid())
+  meetingId      String
+  autoText       String
+  finalText      String
+  autoAssignee   String?
+  finalAssignee  String?
+  autoDueDate    String?
+  finalDueDate   String?
+  done           Boolean  @default(false)
+  taskOrder      Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, taskOrder])
+}
+
+model MeetingQuestion {
+  id          String   @id @default(cuid())
+  meetingId   String
+  userId      String
+  question    String
+  answer      String
+  createdAt   DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, createdAt])
+}
+
+model ExportLog {
+  id          String      @id @default(cuid())
+  meetingId    String
+  userId       String
+  target       ExportTarget
+  destination  String
+  status       ExportStatus
+  errorMessage String?
+  createdAt    DateTime    @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, createdAt])
+}
+
+model Subscription {
+  id            String             @id @default(cuid())
+  userId        String
+  workspaceId   String?
+  planCode      String
+  billingPeriod BillingPeriod?
+  status        SubscriptionStatus
+  startedAt     DateTime           @default(now())
+  expiresAt     DateTime?
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([workspaceId])
+}
+
+model AIModelConfig {
+  id         String       @id @default(cuid())
+  purpose    ModelPurpose
+  provider   String
+  model      String
+  isActive   Boolean      @default(false)
+  configJson Json?
+  updatedAt  DateTime     @updatedAt
+  createdAt  DateTime     @default(now())
+
+  @@index([purpose, isActive])
+}
+
+model MeetingProcessingRun {
+  id                     String    @id @default(cuid())
+  meetingId              String
+  userId                 String
+  workspaceId            String?
+  status                 RunStatus @default(pending)
+  transcriptionProvider  String?
+  transcriptionModel     String?
+  postprocessingProvider String?
+  postprocessingModel    String?
+  totalCost              Float     @default(0)
+  startedAt              DateTime?
+  finishedAt             DateTime?
+  durationMs             Int?
+  errorCode              String?
+  errorMessage           String?
+  createdAt              DateTime  @default(now())
+
+  meeting   Meeting              @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace?           @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  steps     ProcessingStepLog[]
+
+  @@index([meetingId, createdAt])
+  @@index([workspaceId])
+}
+
+model ProcessingStepLog {
+  id            String     @id @default(cuid())
+  runId         String
+  userId        String
+  stepName      ProcessingStepName
+  status        StepStatus
+  provider      String?
+  model         String?
+  startedAt     DateTime   @default(now())
+  finishedAt    DateTime?
+  durationMs    Int?
+  cost          Float      @default(0)
+  errorCode     String?
+  errorMessage  String?
+
+  run  MeetingProcessingRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  user User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([runId, stepName])
+  @@index([userId, startedAt])
+}
+
+model TelegramContact {
+  id        String   @id @default(cuid())
+  chatId    String   @unique
+  name      String
+  username  String?
+  type      String   @default("private")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
