@@ -292,7 +292,6 @@ const MeetingsPage = () => {
   const [title, setTitle] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryClient = useQueryClient();
@@ -305,13 +304,10 @@ const MeetingsPage = () => {
   };
 
   const meetings = useQuery({
-    queryKey: ["meetings", debouncedSearch, statusFilter],
+    queryKey: ["meetings", debouncedSearch],
     queryFn: async () =>
       (await api.get("/me/meetings", {
-        params: {
-          search: debouncedSearch || undefined,
-          status: statusFilter || undefined,
-        },
+        params: { search: debouncedSearch || undefined },
       })).data,
   });
 
@@ -378,13 +374,6 @@ const MeetingsPage = () => {
               style={{ width: "100%", paddingLeft: 32 }}
             />
           </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ minWidth: 140 }}>
-            <option value="">Все статусы</option>
-            <option value="CREATED">Создана</option>
-            <option value="PROCESSING">Обработка</option>
-            <option value="READY">Готово</option>
-            <option value="FAILED">Ошибка</option>
-          </select>
           <button
             className="btn btn-secondary btn-sm"
             onClick={toggleOrder}
@@ -399,7 +388,7 @@ const MeetingsPage = () => {
         {meetings.isError && <p className="error">Не удалось загрузить встречи</p>}
         {!meetings.isLoading && sortedMeetings.length === 0 && (
           <p className="muted" style={{ margin: 0 }}>
-            {debouncedSearch || statusFilter ? "Ничего не найдено. Попробуйте изменить фильтры." : "Нет встреч. Создайте первую выше."}
+            {debouncedSearch ? "Ничего не найдено." : "Нет встреч. Создайте первую выше."}
           </p>
         )}
         <div className="meeting-list">
