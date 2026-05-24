@@ -305,17 +305,23 @@ const MeetingsPage = () => {
   };
 
   const meetings = useQuery({
-    queryKey: ["meetings", debouncedSearch, statusFilter, order],
+    queryKey: ["meetings", debouncedSearch, statusFilter],
     queryFn: async () =>
       (await api.get("/me/meetings", {
         params: {
           search: debouncedSearch || undefined,
           status: statusFilter || undefined,
-          sortBy: "title",
-          order,
         },
       })).data,
   });
+
+  const sortedMeetings = useMemo(() => {
+    if (!meetings.data) return [];
+    return [...meetings.data].sort((a: any, b: any) => {
+      const cmp = a.title.localeCompare(b.title, "ru", { sensitivity: "base" });
+      return order === "asc" ? cmp : -cmp;
+    });
+  }, [meetings.data, order]);
 
   const createMeeting = useMutation({
     mutationFn: async () => (await api.post("/me/meetings", { title })).data,
@@ -391,13 +397,13 @@ const MeetingsPage = () => {
 
         {meetings.isLoading && <p className="muted">Загрузка...</p>}
         {meetings.isError && <p className="error">Не удалось загрузить встречи</p>}
-        {!meetings.isLoading && meetings.data?.length === 0 && (
+        {!meetings.isLoading && sortedMeetings.length === 0 && (
           <p className="muted" style={{ margin: 0 }}>
             {debouncedSearch || statusFilter ? "Ничего не найдено. Попробуйте изменить фильтры." : "Нет встреч. Создайте первую выше."}
           </p>
         )}
         <div className="meeting-list">
-          {meetings.data?.map((meeting: any) => (
+          {sortedMeetings.map((meeting: any) => (
             <div
               key={meeting.id}
               className="meeting-card"
