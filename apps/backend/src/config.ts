@@ -25,4 +25,5 @@ export const config = {
   smtpHost: process.env.SMTP_HOST ?? "localhost",
   smtpPort: Number(process.env.SMTP_PORT ?? 1025),
   smtpFrom: process.env.SMTP_FROM ?? "meeting-ai@example.local",
+  appUrl: process.env.APP_URL ?? "http://localhost:5173",
 };

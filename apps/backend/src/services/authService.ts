@@ -1,8 +1,11 @@
+import crypto from "node:crypto";
+import nodemailer from "nodemailer";
 import { MembershipRole, WorkspaceKind } from "@prisma/client";
 import { prisma } from "../db";
+import { config } from "../config";
 import { hashPassword, verifyPassword } from "../lib/hash";
 import { signToken, type AuthPayload } from "../lib/jwt";
-import type { LoginDto, RegisterDto } from "../dto/auth";
+import type { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from "../dto/auth";
 
 const pickActiveWorkspaceId = (
   memberships: Array<{ workspaceId: string; role: MembershipRole; workspace: { kind: WorkspaceKind } }>,
@@ -90,6 +93,49 @@ export const authService = {
       token: signToken({ userId: user.id, workspaceId, isAdmin: user.isAdmin }),
       user: { id: user.id, email: user.email, name: user.name, workspaceId },
     };
+  },
+
+  async forgotPassword(payload: ForgotPasswordDto): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { email: payload.email } });
+    if (!user) return; // not revealing whether email exists
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordResetToken: token, passwordResetExpires: expires },
+    });
+
+    const resetUrl = `${config.appUrl}/reset-password?token=${token}`;
+    const transporter = nodemailer.createTransport({ host: config.smtpHost, port: config.smtpPort });
+
+    await transporter.sendMail({
+      from: config.smtpFrom,
+      to: user.email,
+      subject: "Восстановление пароля",
+      text: `Для сброса пароля перейдите по ссылке:\n\n${resetUrl}\n\nСсылка действует 15 минут. Если вы не запрашивали сброс пароля — проигнорируйте это письмо.`,
+      html: `<p>Для сброса пароля перейдите по ссылке:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>Ссылка действует 15 минут. Если вы не запрашивали сброс пароля — проигнорируйте это письмо.</p>`,
+    });
+  },
+
+  async resetPassword(payload: ResetPasswordDto): Promise<void> {
+    const user = await prisma.user.findUnique({
+      where: { passwordResetToken: payload.token },
+    });
+
+    if (!user || !user.passwordResetExpires || user.passwordResetExpires < new Date()) {
+      throw new Error("INVALID_OR_EXPIRED_TOKEN");
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await hashPassword(payload.password),
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    });
   },
 
   async getSession(auth: AuthPayload): Promise<{ user: { id: string; email: string; name: string | null; isAdmin: boolean }; workspaceId: string } | null> {

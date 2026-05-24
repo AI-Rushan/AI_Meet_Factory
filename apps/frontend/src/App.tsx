@@ -206,11 +206,168 @@ const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
 
         <p style={{ textAlign: "center", margin: 0, fontSize: "0.85em", color: "var(--muted)" }}>
           {mode === "login" ? (
-            <>Нет аккаунта? <Link to="/register">Зарегистрируйтесь</Link></>
+            <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span>Нет аккаунта? <Link to="/register">Зарегистрируйтесь</Link></span>
+              <span><Link to="/forgot-password">Забыли пароль?</Link></span>
+            </span>
           ) : (
             <>Уже есть аккаунт? <Link to="/login">Войти</Link></>
           )}
         </p>
+      </form>
+    </div>
+  );
+};
+
+// ── ForgotPasswordPage ─────────────────────────────────────────────────────
+
+const ForgotPasswordPage = () => {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      await api.post("/auth/forgot-password", { email });
+    },
+    onSuccess: () => setSent(true),
+  });
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    mutation.mutate();
+  };
+
+  return (
+    <div className="auth-wrap">
+      <form className="card auth-card" onSubmit={onSubmit}>
+        <div style={{ textAlign: "center", marginBottom: 4 }}>
+          <BookOpen size={32} color="var(--accent)" />
+          <h2 style={{ margin: "10px 0 0", fontSize: "1.3em" }}>Восстановление пароля</h2>
+          <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.85em" }}>
+            Введите email, и мы пришлём ссылку для сброса пароля
+          </p>
+        </div>
+
+        {sent ? (
+          <div style={{ textAlign: "center", padding: "12px 0" }}>
+            <p style={{ color: "var(--success)", marginBottom: 8 }}>
+              Письмо отправлено! Проверьте почту и перейдите по ссылке.
+            </p>
+            <Link to="/login" style={{ fontSize: "0.85em" }}>Вернуться к входу</Link>
+          </div>
+        ) : (
+          <>
+            <input
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <button className="btn btn-primary" type="submit" disabled={mutation.isPending} style={{ width: "100%", justifyContent: "center", padding: "10px" }}>
+              {mutation.isPending ? "Отправка..." : "Отправить ссылку"}
+            </button>
+            {mutation.isError && (
+              <p className="error" style={{ textAlign: "center" }}>Не удалось отправить письмо. Попробуйте позже.</p>
+            )}
+            <p style={{ textAlign: "center", margin: 0, fontSize: "0.85em", color: "var(--muted)" }}>
+              <Link to="/login">Вернуться к входу</Link>
+            </p>
+          </>
+        )}
+      </form>
+    </div>
+  );
+};
+
+// ── ResetPasswordPage ──────────────────────────────────────────────────────
+
+const ResetPasswordPage = () => {
+  const navigate = useNavigate();
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [validationError, setValidationError] = useState("");
+
+  const token = new URLSearchParams(window.location.search).get("token") ?? "";
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      await api.post("/auth/reset-password", { token, password });
+    },
+    onSuccess: () => {
+      setTimeout(() => navigate("/login"), 2000);
+    },
+  });
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    setValidationError("");
+    if (password !== confirm) {
+      setValidationError("Пароли не совпадают.");
+      return;
+    }
+    if (password.length < 6) {
+      setValidationError("Пароль должен быть не менее 6 символов.");
+      return;
+    }
+    mutation.mutate();
+  };
+
+  if (!token) {
+    return (
+      <div className="auth-wrap">
+        <div className="card auth-card" style={{ textAlign: "center" }}>
+          <p className="error">Ссылка для сброса пароля недействительна.</p>
+          <Link to="/forgot-password">Запросить новую ссылку</Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="auth-wrap">
+      <form className="card auth-card" onSubmit={onSubmit}>
+        <div style={{ textAlign: "center", marginBottom: 4 }}>
+          <BookOpen size={32} color="var(--accent)" />
+          <h2 style={{ margin: "10px 0 0", fontSize: "1.3em" }}>Новый пароль</h2>
+          <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.85em" }}>
+            Придумайте новый пароль для своего аккаунта
+          </p>
+        </div>
+
+        {mutation.isSuccess ? (
+          <div style={{ textAlign: "center", padding: "12px 0" }}>
+            <p style={{ color: "var(--success)" }}>Пароль успешно изменён! Перенаправление на вход...</p>
+          </div>
+        ) : (
+          <>
+            <input
+              placeholder="Новый пароль (минимум 6 символов)"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            <input
+              placeholder="Повторите пароль"
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+            />
+            <button className="btn btn-primary" type="submit" disabled={mutation.isPending} style={{ width: "100%", justifyContent: "center", padding: "10px" }}>
+              {mutation.isPending ? "Сохранение..." : "Сохранить пароль"}
+            </button>
+            {validationError && <p className="error" style={{ textAlign: "center" }}>{validationError}</p>}
+            {mutation.isError && (
+              <p className="error" style={{ textAlign: "center" }}>
+                {(mutation.error as { response?: { status: number } })?.response?.status === 400
+                  ? "Ссылка устарела или недействительна. Запросите новую."
+                  : "Не удалось сохранить пароль. Попробуйте позже."}
+              </p>
+            )}
+          </>
+        )}
       </form>
     </div>
   );
@@ -1934,6 +2091,8 @@ export const App = () => (
   <Routes>
     <Route path="/login" element={<AuthPage mode="login" />} />
     <Route path="/register" element={<AuthPage mode="register" />} />
+    <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+    <Route path="/reset-password" element={<ResetPasswordPage />} />
     <Route path="/meetings" element={<Guard><MeetingsPage /></Guard>} />
     <Route path="/meetings/:meetingId" element={<Guard><MeetingDetailsPage /></Guard>} />
     <Route path="/admin/runs" element={<Guard><AdminRunsPage /></Guard>} />
