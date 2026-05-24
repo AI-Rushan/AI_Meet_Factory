@@ -281,6 +281,13 @@ const MeetingMenu = ({ meetingId, onDeleted }: { meetingId: string; onDeleted: (
 
 // ── MeetingsPage ───────────────────────────────────────────────────────────
 
+const parseTitleDate = (title: string): number => {
+  const match = title.match(/^(\d{2})[-_.](\d{2})[-_.](\d{4})/);
+  if (!match) return 0;
+  const [, dd, mm, yyyy] = match;
+  return parseInt(`${yyyy}${mm}${dd}`, 10);
+};
+
 const EXAMPLES = [
   "20_03_2026 Встреча при Ген.директоре",
   "10_02_2025 Подготовка к 23 февраля",
@@ -314,6 +321,11 @@ const MeetingsPage = () => {
   const sortedMeetings = useMemo(() => {
     if (!meetings.data) return [];
     return [...meetings.data].sort((a: any, b: any) => {
+      const dateA = parseTitleDate(a.title);
+      const dateB = parseTitleDate(b.title);
+      if (dateA !== 0 || dateB !== 0) {
+        return order === "asc" ? dateA - dateB : dateB - dateA;
+      }
       const cmp = a.title.localeCompare(b.title, "ru", { sensitivity: "base" });
       return order === "asc" ? cmp : -cmp;
     });
