@@ -10,7 +10,11 @@ import {
 } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowDownAZ,
+  ArrowDownZA,
   BookOpen,
+  CalendarArrowDown,
+  CalendarArrowUp,
   CheckSquare,
   Download,
   FileAudio,
@@ -20,6 +24,7 @@ import {
   MessageCircle,
   MoreHorizontal,
   Plus,
+  Search,
   Settings,
   Share2,
   Sparkles,
@@ -287,12 +292,32 @@ const EXAMPLES = [
 
 const MeetingsPage = () => {
   const [title, setTitle] = useState("");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "title">("createdAt");
+  const [order, setOrder] = useState<"asc" | "desc">("desc");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(value), 300);
+  };
+
   const meetings = useQuery({
-    queryKey: ["meetings"],
-    queryFn: async () => (await api.get("/me/meetings")).data,
+    queryKey: ["meetings", debouncedSearch, statusFilter, sortBy, order],
+    queryFn: async () =>
+      (await api.get("/me/meetings", {
+        params: {
+          search: debouncedSearch || undefined,
+          status: statusFilter || undefined,
+          sortBy,
+          order,
+        },
+      })).data,
   });
 
   const createMeeting = useMutation({
@@ -303,6 +328,8 @@ const MeetingsPage = () => {
       navigate(`/meetings/${data.id}`);
     },
   });
+
+  const toggleOrder = () => setOrder((o) => (o === "desc" ? "asc" : "desc"));
 
   return (
     <AppShell>
@@ -337,11 +364,48 @@ const MeetingsPage = () => {
       </section>
 
       <section className="card">
-        <h2 style={{ margin: "0 0 16px", fontSize: "1.1em", fontWeight: 600 }}>Встречи</h2>
+        {/* Поиск и фильтры */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+            <Search size={15} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", pointerEvents: "none" }} />
+            <input
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Поиск по названию..."
+              style={{ width: "100%", paddingLeft: 32 }}
+            />
+          </div>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ minWidth: 140 }}>
+            <option value="">Все статусы</option>
+            <option value="CREATED">Создана</option>
+            <option value="PROCESSING">Обработка</option>
+            <option value="READY">Готово</option>
+            <option value="FAILED">Ошибка</option>
+          </select>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button
+              className={`btn btn-sm ${sortBy === "createdAt" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => { setSortBy("createdAt"); if (sortBy === "createdAt") toggleOrder(); }}
+              title="Сортировка по дате"
+            >
+              {sortBy === "createdAt" && order === "asc" ? <CalendarArrowUp size={15} /> : <CalendarArrowDown size={15} />}
+            </button>
+            <button
+              className={`btn btn-sm ${sortBy === "title" ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => { setSortBy("title"); if (sortBy === "title") toggleOrder(); }}
+              title="Сортировка по названию"
+            >
+              {sortBy === "title" && order === "asc" ? <ArrowDownAZ size={15} /> : <ArrowDownZA size={15} />}
+            </button>
+          </div>
+        </div>
+
         {meetings.isLoading && <p className="muted">Загрузка...</p>}
         {meetings.isError && <p className="error">Не удалось загрузить встречи</p>}
-        {meetings.data?.length === 0 && (
-          <p className="muted" style={{ margin: 0 }}>Нет встреч. Создайте первую выше.</p>
+        {!meetings.isLoading && meetings.data?.length === 0 && (
+          <p className="muted" style={{ margin: 0 }}>
+            {debouncedSearch || statusFilter ? "Ничего не найдено. Попробуйте изменить фильтры." : "Нет встреч. Создайте первую выше."}
+          </p>
         )}
         <div className="meeting-list">
           {meetings.data?.map((meeting: any) => (
@@ -443,6 +507,76 @@ const SummarySection = ({ meetingId, summary }: { meetingId: string; summary: an
   );
 };
 
+// ── InlineSpeakerName ──────────────────────────────────────────────────────
+
+const InlineSpeakerName = ({
+  meetingId,
+  speaker,
+}: {
+  meetingId: string;
+  speaker: any;
+}) => {
+  const queryClient = useQueryClient();
+  const displayName = speaker?.confirmedName ?? speaker?.suggestedName ?? speaker?.autoLabel ?? "Speaker";
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(speaker?.confirmedName ?? "");
+
+  const update = useMutation({
+    mutationFn: async () =>
+      (await api.patch(`/me/meetings/${meetingId}/speakers/${speaker.id}`, { confirmed_name: name || null })).data,
+    onSuccess: () => {
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
+    },
+  });
+
+  if (!speaker) return <span style={{ fontWeight: 600, fontSize: "0.88em" }}>Speaker</span>;
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => update.mutate()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") update.mutate();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        style={{ fontWeight: 600, fontSize: "0.88em", width: 140, padding: "1px 6px" }}
+      />
+    );
+  }
+
+  return (
+    <span
+      title="Нажмите, чтобы переименовать"
+      onClick={() => { setName(speaker.confirmedName ?? ""); setEditing(true); }}
+      style={{ fontWeight: 600, fontSize: "0.88em", cursor: "pointer", borderBottom: "1px dashed var(--line)" }}
+    >
+      {displayName}
+    </span>
+  );
+};
+
+// ── HighlightedText ────────────────────────────────────────────────────────
+
+const HighlightedText = ({ text, query }: { text: string; query: string }) => {
+  if (!query) return <>{text}</>;
+  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"));
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === query.toLowerCase() ? (
+          <mark key={i} style={{ background: "#fef08a", borderRadius: 2, padding: "0 1px" }}>{part}</mark>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+};
+
 // ── TranscriptSection ──────────────────────────────────────────────────────
 
 const TranscriptSection = ({
@@ -456,6 +590,7 @@ const TranscriptSection = ({
 }) => {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [transcriptSearch, setTranscriptSearch] = useState("");
   const [draftSegments, setDraftSegments] = useState<Array<{ id: string; text: string; speakerId: string | null }>>([]);
 
   const startEdit = () => {
@@ -549,13 +684,50 @@ const TranscriptSection = ({
           })}
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 2 }}>
-          {transcriptLines.length === 0
-            ? <p className="muted">Транскрипция отсутствует. Загрузите аудио/видео файл.</p>
-            : transcriptLines.map((line: string, i: number) => (
-                <p key={i} style={{ margin: 0, fontSize: "0.9em", lineHeight: 1.6 }}>{line}</p>
-              ))
-          }
+        <div>
+          {transcriptLines.length === 0 ? (
+            <p className="muted">Транскрипция отсутствует. Загрузите аудио/видео файл.</p>
+          ) : (
+            <>
+              <div style={{ position: "relative", marginBottom: 12 }}>
+                <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", pointerEvents: "none" }} />
+                <input
+                  value={transcriptSearch}
+                  onChange={(e) => setTranscriptSearch(e.target.value)}
+                  placeholder="Поиск в транскрипции..."
+                  style={{ width: "100%", paddingLeft: 32, fontSize: "0.88em" }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {meetingData?.transcript?.segments
+                  ?.filter((seg: any) =>
+                    !transcriptSearch ||
+                    seg.text.toLowerCase().includes(transcriptSearch.toLowerCase()),
+                  )
+                  .map((seg: any) => {
+                    const time = new Date(seg.startSec * 1000).toISOString().substring(11, 19);
+                    return (
+                      <div key={seg.id} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                        <span style={{ fontSize: "0.75em", color: "var(--muted)", whiteSpace: "nowrap", flexShrink: 0, paddingTop: 2 }}>
+                          [{time}]
+                        </span>
+                        <span style={{ fontSize: "0.9em", lineHeight: 1.6 }}>
+                          <InlineSpeakerName meetingId={meetingId} speaker={seg.speaker} />
+                          {": "}
+                          <HighlightedText text={seg.text} query={transcriptSearch} />
+                        </span>
+                      </div>
+                    );
+                  })}
+                {transcriptSearch &&
+                  meetingData?.transcript?.segments?.filter((seg: any) =>
+                    seg.text.toLowerCase().includes(transcriptSearch.toLowerCase()),
+                  ).length === 0 && (
+                  <p className="muted" style={{ margin: 0 }}>Ничего не найдено</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -1592,15 +1764,44 @@ const AdminModelsPage = () => {
           Используется для суммаризации, задач, спикеров и Q&A по встрече.
         </p>
         {activePostprocessing && (
-          <ModelConfigRow
-            title=""
-            model={activePostprocessing}
-            onSave={(provider, model) => {
-              if (window.confirm("Активировать выбранную модель постобработки?")) {
-                update.mutate({ purpose: "postprocessing", provider, model });
-              }
-            }}
-          />
+          <>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              {[
+                { provider: "openai", model: "gpt-4o-mini", label: "OpenAI GPT-4o-mini", price: "$0.15/1M" },
+                { provider: "gemini", model: "gemini-2.0-flash", label: "Gemini 2.0 Flash", price: "~$0.10/1M" },
+                { provider: "mock", model: "-", label: "Mock (разработка)", price: "бесплатно" },
+              ].map((preset) => {
+                const isActive = activePostprocessing.provider === preset.provider;
+                return (
+                  <div key={preset.provider} className={`model-card${isActive ? " active" : ""}`} style={{ flex: "1 1 200px" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 2 }}>
+                        <strong style={{ fontSize: "0.9em" }}>{preset.label}</strong>
+                        <span className="badge badge-free">{preset.price}</span>
+                        {isActive && <span className="badge badge-active">АКТИВНА</span>}
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      disabled={isActive || update.isPending}
+                      onClick={() => update.mutate({ purpose: "postprocessing", provider: preset.provider, model: preset.model })}
+                    >
+                      {isActive ? "Активна" : "Активировать"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <ModelConfigRow
+              title="Или задать вручную:"
+              model={activePostprocessing}
+              onSave={(provider, model) => {
+                if (window.confirm("Активировать выбранную модель постобработки?")) {
+                  update.mutate({ purpose: "postprocessing", provider, model });
+                }
+              }}
+            />
+          </>
         )}
 
         {update.isError && <p className="error" style={{ marginTop: 12 }}>Не удалось обновить модель</p>}

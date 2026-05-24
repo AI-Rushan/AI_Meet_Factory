@@ -100,7 +100,15 @@ meetingsRouter.use(authRequired);
 
 meetingsRouter.get("/", async (req, res) => {
   try {
-    const meetings = await meetingsService.listMyMeetings(req.auth!);
+    const { search, status, sortBy, order } = req.query as Record<string, string | undefined>;
+    const VALID_STATUSES = ["CREATED", "PROCESSING", "READY", "FAILED"] as const;
+    type ValidStatus = (typeof VALID_STATUSES)[number];
+    const meetings = await meetingsService.listMyMeetings(req.auth!, {
+      search: search || undefined,
+      status: VALID_STATUSES.includes(status as ValidStatus) ? (status as ValidStatus) : undefined,
+      sortBy: sortBy === "title" ? "title" : "createdAt",
+      order: order === "asc" ? "asc" : "desc",
+    });
     res.json(meetings);
   } catch (error) {
     if (error instanceof Error && error.message === "NO_WORKSPACE_MEMBERSHIP") {

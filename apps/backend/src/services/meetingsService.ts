@@ -1,3 +1,4 @@
+import type { MeetingStatus } from "@prisma/client";
 import type { AuthPayload } from "../lib/jwt";
 import { prisma } from "../db";
 import { assertMeetingStatusTransition } from "./meetingStatusLifecycle";
@@ -27,16 +28,27 @@ const getOwnedMeeting = async (meetingId: string, auth: AuthPayload) =>
     },
   });
 
+type ListMeetingsOptions = {
+  search?: string;
+  status?: MeetingStatus;
+  sortBy?: "createdAt" | "title";
+  order?: "asc" | "desc";
+};
+
 export const meetingsService = {
-  async listMyMeetings(auth: AuthPayload) {
+  async listMyMeetings(auth: AuthPayload, opts: ListMeetingsOptions = {}) {
     await assertWorkspaceMembership(auth);
+
+    const { search, status, sortBy = "createdAt", order = "desc" } = opts;
 
     return prisma.meeting.findMany({
       where: {
         workspaceId: auth.workspaceId,
         workspace: { memberships: { some: { userId: auth.userId } } },
+        ...(search ? { title: { contains: search, mode: "insensitive" } } : {}),
+        ...(status ? { status } : {}),
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: sortBy === "title" ? { title: order } : { createdAt: order },
       include: {
         summary: true,
         transcript: true,
