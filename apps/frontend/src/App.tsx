@@ -13,8 +13,6 @@ import {
   ArrowDownAZ,
   ArrowDownZA,
   BookOpen,
-  CalendarArrowDown,
-  CalendarArrowUp,
   CheckSquare,
   Download,
   FileAudio,
@@ -295,8 +293,7 @@ const MeetingsPage = () => {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [sortBy, setSortBy] = useState<"createdAt" | "title">("createdAt");
-  const [order, setOrder] = useState<"asc" | "desc">("desc");
+  const [order, setOrder] = useState<"asc" | "desc">("asc");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -308,13 +305,13 @@ const MeetingsPage = () => {
   };
 
   const meetings = useQuery({
-    queryKey: ["meetings", debouncedSearch, statusFilter, sortBy, order],
+    queryKey: ["meetings", debouncedSearch, statusFilter, order],
     queryFn: async () =>
       (await api.get("/me/meetings", {
         params: {
           search: debouncedSearch || undefined,
           status: statusFilter || undefined,
-          sortBy,
+          sortBy: "title",
           order,
         },
       })).data,
@@ -329,7 +326,7 @@ const MeetingsPage = () => {
     },
   });
 
-  const toggleOrder = () => setOrder((o) => (o === "desc" ? "asc" : "desc"));
+  const toggleOrder = () => setOrder((o) => (o === "asc" ? "desc" : "asc"));
 
   return (
     <AppShell>
@@ -382,22 +379,14 @@ const MeetingsPage = () => {
             <option value="READY">Готово</option>
             <option value="FAILED">Ошибка</option>
           </select>
-          <div style={{ display: "flex", gap: 4 }}>
-            <button
-              className={`btn btn-sm ${sortBy === "createdAt" ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => { setSortBy("createdAt"); if (sortBy === "createdAt") toggleOrder(); }}
-              title="Сортировка по дате"
-            >
-              {sortBy === "createdAt" && order === "asc" ? <CalendarArrowUp size={15} /> : <CalendarArrowDown size={15} />}
-            </button>
-            <button
-              className={`btn btn-sm ${sortBy === "title" ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => { setSortBy("title"); if (sortBy === "title") toggleOrder(); }}
-              title="Сортировка по названию"
-            >
-              {sortBy === "title" && order === "asc" ? <ArrowDownAZ size={15} /> : <ArrowDownZA size={15} />}
-            </button>
-          </div>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={toggleOrder}
+            title={order === "asc" ? "А → Я (нажмите для Я → А)" : "Я → А (нажмите для А → Я)"}
+          >
+            {order === "asc" ? <ArrowDownAZ size={15} /> : <ArrowDownZA size={15} />}
+            {order === "asc" ? "А–Я" : "Я–А"}
+          </button>
         </div>
 
         {meetings.isLoading && <p className="muted">Загрузка...</p>}
