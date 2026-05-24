@@ -87,7 +87,7 @@ CREATED → PROCESSING → READY
 | groq | whisper-large-v3-turbo | бесплатно | нет (SPEAKER_1) |
 | openai | whisper-1 | $0.006/мин | нет (SPEAKER_1) |
 | gemini | gemini-2.0-flash | ~$0.10/1M токенов | да (по голосу или каналам) |
-| deepgram | nova-2 | $0.0077/час | да |
+| deepgram | nova-3 | $0.0059/мин | да |
 | assemblyai | best | $0.0062/мин | да |
 | gladia | solaria-1 | бесплатно до 10ч/мес | да |
 

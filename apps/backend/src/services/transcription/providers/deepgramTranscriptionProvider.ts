@@ -41,7 +41,7 @@ type DeepgramResponse = {
 };
 
 // Deepgram Nova-3 — синхронный ответ, диаризация или multichannel
-// Цена: $0.0077/час
+// Цена: $0.0059/мин
 export class DeepgramTranscriptionProvider implements TranscriptionAdapter {
   async transcribe(filePath: string): Promise<TranscriptionResult> {
     if (!config.deepgramApiKey) throw new Error("DEEPGRAM_API_KEY is not configured");
@@ -88,7 +88,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionAdapter {
       segments,
       provider: "deepgram",
       model: "nova-3",
-      cost: parseFloat(((duration / 3600) * 0.0077).toFixed(5)),
+      cost: parseFloat(((duration / 60) * 0.0059).toFixed(5)),
     };
   }
 

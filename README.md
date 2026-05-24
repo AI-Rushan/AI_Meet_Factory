@@ -111,7 +111,7 @@ pnpm dev:frontend
 | `groq` | whisper-large-v3-turbo | бесплатно (лимит 7200с/час) | нет |
 | `openai` | whisper-1 | $0.006/мин | нет |
 | `gemini` | gemini-2.0-flash | ~$0.10/1M токенов | да |
-| `deepgram` | nova-2 | $0.0077/час | да |
+| `deepgram` | nova-3 | $0.0059/мин | да |
 | `assemblyai` | best | $0.0062/мин | да |
 | `gladia` | solaria-1 | бесплатно 10ч/мес | да |
 | `mock` | — | бесплатно | нет (для разработки) |
