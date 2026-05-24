@@ -507,58 +507,6 @@ const SummarySection = ({ meetingId, summary }: { meetingId: string; summary: an
   );
 };
 
-// ── InlineSpeakerName ──────────────────────────────────────────────────────
-
-const InlineSpeakerName = ({
-  meetingId,
-  speaker,
-}: {
-  meetingId: string;
-  speaker: any;
-}) => {
-  const queryClient = useQueryClient();
-  const displayName = speaker?.confirmedName ?? speaker?.suggestedName ?? speaker?.autoLabel ?? "Speaker";
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(speaker?.confirmedName ?? "");
-
-  const update = useMutation({
-    mutationFn: async () =>
-      (await api.patch(`/me/meetings/${meetingId}/speakers/${speaker.id}`, { confirmed_name: name || null })).data,
-    onSuccess: () => {
-      setEditing(false);
-      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
-    },
-  });
-
-  if (!speaker) return <span style={{ fontWeight: 600, fontSize: "0.88em" }}>Speaker</span>;
-
-  if (editing) {
-    return (
-      <input
-        autoFocus
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onBlur={() => update.mutate()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") update.mutate();
-          if (e.key === "Escape") setEditing(false);
-        }}
-        style={{ fontWeight: 600, fontSize: "0.88em", width: 140, padding: "1px 6px" }}
-      />
-    );
-  }
-
-  return (
-    <span
-      title="Нажмите, чтобы переименовать"
-      onClick={() => { setName(speaker.confirmedName ?? ""); setEditing(true); }}
-      style={{ fontWeight: 600, fontSize: "0.88em", cursor: "pointer", borderBottom: "1px dashed var(--line)" }}
-    >
-      {displayName}
-    </span>
-  );
-};
-
 // ── HighlightedText ────────────────────────────────────────────────────────
 
 const HighlightedText = ({ text, query }: { text: string; query: string }) => {
@@ -712,7 +660,9 @@ const TranscriptSection = ({
                           [{time}]
                         </span>
                         <span style={{ fontSize: "0.9em", lineHeight: 1.6 }}>
-                          <InlineSpeakerName meetingId={meetingId} speaker={seg.speaker} />
+                          <strong style={{ fontWeight: 600 }}>
+                            {seg.speaker?.confirmedName ?? seg.speaker?.suggestedName ?? seg.speaker?.autoLabel ?? "Speaker"}
+                          </strong>
                           {": "}
                           <HighlightedText text={seg.text} query={transcriptSearch} />
                         </span>
