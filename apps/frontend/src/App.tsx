@@ -1,25 +1,119 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  BookOpen,
+  CheckSquare,
+  Download,
+  FileAudio,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  MessageCircle,
+  MoreHorizontal,
+  Plus,
+  Settings,
+  Share2,
+  Sparkles,
+  Trash2,
+  Upload,
+  Users,
+} from "lucide-react";
 import { api, clearToken, getTokenPayload, hasToken, saveToken } from "./api";
+
+// ── Sidebar NavLink ────────────────────────────────────────────────────────
+
+const SidebarLink = ({
+  to,
+  icon,
+  label,
+}: {
+  to: string;
+  icon: ReactNode;
+  label: string;
+}) => {
+  const location = useLocation();
+  const active = location.pathname.startsWith(to);
+  return (
+    <Link to={to} className={`sidebar-link${active ? " active" : ""}`}>
+      {icon}
+      {label}
+    </Link>
+  );
+};
+
+// ── AppShell ───────────────────────────────────────────────────────────────
 
 const AppShell = ({ children }: { children: ReactNode }) => {
   const isAdmin = getTokenPayload().isAdmin ?? false;
   return (
     <div className="layout">
       <aside className="sidebar">
-        <h1>Meeting AI</h1>
-        <nav>
-          <Link to="/meetings">Встречи</Link>
-          {isAdmin && <Link to="/admin/runs">Журнал обработок</Link>}
-          {isAdmin && <Link to="/admin/models">Настройки ИИ</Link>}
-          {isAdmin && <Link to="/admin/users">Пользователи</Link>}
+        <div className="sidebar-logo">
+          <BookOpen size={20} color="var(--accent)" />
+          Meeting AI
+        </div>
+        <nav className="sidebar-nav">
+          <SidebarLink to="/meetings" icon={<LayoutDashboard size={16} />} label="Встречи" />
+          {isAdmin && (
+            <SidebarLink to="/admin/runs" icon={<FileText size={16} />} label="Журнал обработок" />
+          )}
+          {isAdmin && (
+            <SidebarLink to="/admin/models" icon={<Settings size={16} />} label="Настройки ИИ" />
+          )}
+          {isAdmin && (
+            <SidebarLink to="/admin/users" icon={<Users size={16} />} label="Пользователи" />
+          )}
         </nav>
+        <div className="sidebar-footer">
+          <button
+            className="sidebar-link"
+            onClick={() => {
+              clearToken();
+              window.location.href = "/login";
+            }}
+          >
+            <LogOut size={16} />
+            Выйти
+          </button>
+        </div>
       </aside>
       <main className="content">{children}</main>
     </div>
   );
 };
+
+// ── StatusBadge ────────────────────────────────────────────────────────────
+
+const STATUS_CLASS: Record<string, string> = {
+  READY:      "badge-ready",
+  PROCESSING: "badge-processing",
+  FAILED:     "badge-failed",
+  CREATED:    "badge-created",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  READY:      "Готово",
+  PROCESSING: "Обработка…",
+  FAILED:     "Ошибка",
+  CREATED:    "Создана",
+};
+
+const StatusBadge = ({ status }: { status: string }) => (
+  <span className={`badge ${STATUS_CLASS[status] ?? "badge-created"}`}>
+    {STATUS_LABEL[status] ?? status}
+  </span>
+);
+
+// ── Auth ───────────────────────────────────────────────────────────────────
 
 const resolveAuthError = (error: unknown): string => {
   if (error && typeof error === "object" && "response" in error) {
@@ -62,12 +156,30 @@ const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
 
   return (
     <div className="auth-wrap">
-      <form className="card" onSubmit={onSubmit}>
-        <h2>{mode === "login" ? "Вход" : "Регистрация"}</h2>
+      <form className="card auth-card" onSubmit={onSubmit}>
+        <div style={{ textAlign: "center", marginBottom: 4 }}>
+          <BookOpen size={32} color="var(--accent)" />
+          <h2 style={{ margin: "10px 0 0", fontSize: "1.3em" }}>
+            {mode === "login" ? "Добро пожаловать" : "Создать аккаунт"}
+          </h2>
+          <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "0.85em" }}>
+            {mode === "login" ? "Войдите в свой аккаунт" : "Зарегистрируйтесь бесплатно"}
+          </p>
+        </div>
+
         {mode === "register" && (
-          <input placeholder="Имя (необязательно)" value={name} onChange={(e) => setName(e.target.value)} />
+          <input
+            placeholder="Имя (необязательно)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         )}
-        <input placeholder="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input
+          placeholder="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
         <input
           placeholder="Пароль (минимум 6 символов)"
           type="password"
@@ -81,19 +193,27 @@ const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
             onChange={(e) => setWorkspaceName(e.target.value)}
           />
         )}
-        <button type="submit" disabled={mutation.isPending}>
+        <button className="btn btn-primary" type="submit" disabled={mutation.isPending} style={{ width: "100%", justifyContent: "center", padding: "10px" }}>
           {mutation.isPending ? "Загрузка..." : mode === "login" ? "Войти" : "Создать аккаунт"}
         </button>
+
         {mutation.isError && (
-          <p className="error">{resolveAuthError(mutation.error)}</p>
+          <p className="error" style={{ textAlign: "center" }}>{resolveAuthError(mutation.error)}</p>
         )}
-        <div className="links-row">
-          {mode === "login" ? <Link to="/register">Регистрация</Link> : <Link to="/login">Войти</Link>}
-        </div>
+
+        <p style={{ textAlign: "center", margin: 0, fontSize: "0.85em", color: "var(--muted)" }}>
+          {mode === "login" ? (
+            <>Нет аккаунта? <Link to="/register">Зарегистрируйтесь</Link></>
+          ) : (
+            <>Уже есть аккаунт? <Link to="/login">Войти</Link></>
+          )}
+        </p>
       </form>
     </div>
   );
 };
+
+// ── MeetingMenu ────────────────────────────────────────────────────────────
 
 const MeetingMenu = ({ meetingId, onDeleted }: { meetingId: string; onDeleted: () => void }) => {
   const navigate = useNavigate();
@@ -114,88 +234,61 @@ const MeetingMenu = ({ meetingId, onDeleted }: { meetingId: string; onDeleted: (
     onSuccess: onDeleted,
   });
 
-  const menuItems = [
-    {
-      label: "Открыть",
-      action: () => { setOpen(false); navigate(`/meetings/${meetingId}`); },
-    },
-    {
-      label: "Переместить",
-      action: () => { setOpen(false); alert("Переместить — в разработке"); },
-    },
-    {
-      label: "Удалить",
-      action: () => {
-        setOpen(false);
-        if (window.confirm("Удалить встречу? Это действие нельзя отменить.")) {
-          deleteMeeting.mutate();
-        }
-      },
-      danger: true,
-    },
-  ];
-
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
       <button
-        onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }}
-        style={{
-          background: "none",
-          border: "none",
-          color: "var(--muted)",
-          fontSize: "1.2em",
-          padding: "0 6px",
-          cursor: "pointer",
-          lineHeight: 1,
-        }}
+        className="btn btn-ghost btn-sm"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((v) => !v); }}
         title="Действия"
+        style={{ padding: "4px 8px" }}
       >
-        ···
+        <MoreHorizontal size={16} />
       </button>
       {open && (
-        <div style={{
-          position: "absolute",
-          right: 0,
-          top: "calc(100% + 4px)",
-          background: "var(--surface)",
-          border: "1px solid var(--line)",
-          borderRadius: 10,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
-          minWidth: 160,
-          zIndex: 100,
-          overflow: "hidden",
-        }}>
-          {menuItems.map((item) => (
-            <button
-              key={item.label}
-              onClick={item.action}
-              style={{
-                display: "block",
-                width: "100%",
-                background: "none",
-                border: "none",
-                borderRadius: 0,
-                textAlign: "left",
-                padding: "10px 16px",
-                cursor: "pointer",
-                color: item.danger ? "var(--danger)" : "var(--text)",
-                fontSize: "0.9em",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="dropdown-menu">
+          <button
+            className="dropdown-item"
+            onClick={(e) => { e.stopPropagation(); setOpen(false); navigate(`/meetings/${meetingId}`); }}
+          >
+            Открыть
+          </button>
+          <button
+            className="dropdown-item"
+            onClick={(e) => { e.stopPropagation(); setOpen(false); alert("Переместить — в разработке"); }}
+          >
+            Переместить
+          </button>
+          <button
+            className="dropdown-item danger"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              if (window.confirm("Удалить встречу? Это действие нельзя отменить.")) {
+                deleteMeeting.mutate();
+              }
+            }}
+          >
+            <Trash2 size={14} /> Удалить
+          </button>
         </div>
       )}
     </div>
   );
 };
 
+// ── MeetingsPage ───────────────────────────────────────────────────────────
+
+const EXAMPLES = [
+  "20_03_2026 Встреча при Ген.директоре",
+  "10_02_2025 Подготовка к 23 февраля",
+  "30_03_2026 Финансовые результаты квартала",
+  "11_04_2026 Стендап команды разработки",
+];
+
 const MeetingsPage = () => {
   const [title, setTitle] = useState("");
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const meetings = useQuery({
     queryKey: ["meetings"],
@@ -204,76 +297,82 @@ const MeetingsPage = () => {
 
   const createMeeting = useMutation({
     mutationFn: async () => (await api.post("/me/meetings", { title })).data,
-    onSuccess: () => {
+    onSuccess: (data) => {
       setTitle("");
       queryClient.invalidateQueries({ queryKey: ["meetings"] });
+      navigate(`/meetings/${data.id}`);
     },
   });
 
   return (
     <AppShell>
-      <section className="card" style={{ paddingBottom: 4 }}>
-        <h2 style={{ marginBottom: 10, textAlign: "center" }}>Зарегистрировать встречу</h2>
+      <section className="card">
+        <h2 style={{ margin: "0 0 14px", fontSize: "1.1em", fontWeight: 600 }}>Новая встреча</h2>
         <form
           className="inline-form"
           onSubmit={(e) => {
             e.preventDefault();
-            createMeeting.mutate();
+            if (title.trim()) createMeeting.mutate();
           }}
         >
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Укажите дату и название встречи"
-            style={{ flex: 1, minWidth: 320 }}
+            style={{ flex: 1, minWidth: 260 }}
           />
-          <button type="submit">Создать</button>
+          <button className="btn btn-primary" type="submit" disabled={createMeeting.isPending || !title.trim()}>
+            <Plus size={16} />
+            {createMeeting.isPending ? "Создание..." : "Создать"}
+          </button>
         </form>
-        <div style={{ marginTop: 6, lineHeight: 1.5 }}>
-          <p style={{ margin: 0, fontSize: "0.78em", color: "#9ca3af" }}>Примеры:</p>
-          {[
-            "20_03_2026 Встреча при Ген.директоре",
-            "10_02_2025 Подготовка к 23 февраля",
-            "30_03_2026 Финансовые результаты квартала",
-            "11_04_2026 Стендап команды разработки",
-          ].map((ex) => (
-            <p
-              key={ex}
-              onClick={() => setTitle(ex)}
-              style={{ margin: 0, fontSize: "0.78em", color: "#6b7280", cursor: "pointer" }}
-            >
+        <div style={{ marginTop: 10 }}>
+          <p style={{ margin: "0 0 4px", fontSize: "0.76em", color: "var(--muted)", fontWeight: 500 }}>Примеры:</p>
+          {EXAMPLES.map((ex) => (
+            <p key={ex} style={{ margin: "0", fontSize: "0.76em", color: "var(--muted)" }}>
               {ex}
             </p>
           ))}
         </div>
       </section>
 
-      <section className="card" style={{ flex: 1 }}>
-        {meetings.isLoading && <p>Загрузка...</p>}
+      <section className="card">
+        <h2 style={{ margin: "0 0 16px", fontSize: "1.1em", fontWeight: 600 }}>Встречи</h2>
+        {meetings.isLoading && <p className="muted">Загрузка...</p>}
         {meetings.isError && <p className="error">Не удалось загрузить встречи</p>}
-        {meetings.data?.map((meeting: any) => (
-          <div key={meeting.id} className="list-row" style={{ gap: 8 }}>
-            <Link
-              to={`/meetings/${meeting.id}`}
-              style={{ flex: 1, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "none", color: "inherit" }}
+        {meetings.data?.length === 0 && (
+          <p className="muted" style={{ margin: 0 }}>Нет встреч. Создайте первую выше.</p>
+        )}
+        <div className="meeting-list">
+          {meetings.data?.map((meeting: any) => (
+            <div
+              key={meeting.id}
+              className="meeting-card"
+              onClick={() => navigate(`/meetings/${meeting.id}`)}
             >
-              {meeting.title}
-            </Link>
-            <span style={{ display: "flex", gap: 12, alignItems: "center", whiteSpace: "nowrap", color: "var(--muted)", fontSize: "0.82em", flexShrink: 0 }}>
-              <span>{meeting.status}</span>
-              <span>задачи: {meeting._count.tasks}</span>
-              <span>спикеры: {meeting._count.speakers}</span>
-            </span>
-            <MeetingMenu
-              meetingId={meeting.id}
-              onDeleted={() => queryClient.invalidateQueries({ queryKey: ["meetings"] })}
-            />
-          </div>
-        ))}
+              <FileAudio size={18} color="var(--accent)" style={{ flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {meeting.title}
+                </p>
+                <p style={{ margin: 0, fontSize: "0.78em", color: "var(--muted)" }}>
+                  задачи: {meeting._count.tasks} · спикеры: {meeting._count.speakers}
+                </p>
+              </div>
+              <StatusBadge status={meeting.status} />
+              <MeetingMenu
+                meetingId={meeting.id}
+                onDeleted={() => queryClient.invalidateQueries({ queryKey: ["meetings"] })}
+              />
+            </div>
+          ))}
+        </div>
       </section>
     </AppShell>
   );
 };
+
+// ── parseSummary ───────────────────────────────────────────────────────────
 
 function parseSummary(text: string): { topics: string[]; decisions: string[] } | null {
   try {
@@ -282,6 +381,8 @@ function parseSummary(text: string): { topics: string[]; decisions: string[] } |
   } catch { /* plain text fallback */ }
   return null;
 }
+
+// ── SummarySection ─────────────────────────────────────────────────────────
 
 const SummarySection = ({ meetingId, summary }: { meetingId: string; summary: any }) => {
   const queryClient = useQueryClient();
@@ -297,45 +398,52 @@ const SummarySection = ({ meetingId, summary }: { meetingId: string; summary: an
   const structured = summary ? parseSummary(summary.text) : null;
 
   return (
-    <section className="card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <h3 style={{ margin: 0 }}>Саммари</h3>
+    <div>
+      <div className="section-header">
+        <h3>Саммари</h3>
         <button
+          className="btn btn-secondary btn-sm"
           onClick={() => generate.mutate()}
           disabled={generate.isPending}
-          style={{ fontSize: "0.85em", padding: "5px 12px" }}
         >
-          {generate.isPending ? "Генерация..." : summary ? "Обновить саммари" : "Получить саммари"}
+          <Sparkles size={14} />
+          {generate.isPending ? "Генерация..." : summary ? "Обновить" : "Получить саммари"}
         </button>
       </div>
-      {generate.isError && <p className="error">Не удалось получить саммари</p>}
-      {!summary && <p className="muted" style={{ margin: 0 }}>Саммари ещё не сформировано</p>}
+
+      {generate.isError && <p className="error" style={{ marginBottom: 8 }}>Не удалось получить саммари</p>}
+      {!summary && <p className="muted">Саммари ещё не сформировано. Нажмите «Получить саммари».</p>}
+
       {summary && structured && (
-        <div>
-          <p style={{ fontWeight: 600, marginBottom: 6, marginTop: 0 }}>Темы обсуждения</p>
-          <ul style={{ margin: "0 0 14px 0", paddingLeft: 20 }}>
-            {structured.topics.map((topic, i) => (
-              <li key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>{topic}</li>
-            ))}
-          </ul>
+        <div style={{ display: "grid", gap: 16 }}>
+          <div>
+            <p style={{ margin: "0 0 8px", fontWeight: 600, fontSize: "0.88em", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Темы обсуждения</p>
+            <ul style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 4 }}>
+              {structured.topics.map((topic, i) => (
+                <li key={i} style={{ lineHeight: 1.5 }}>{topic}</li>
+              ))}
+            </ul>
+          </div>
           {structured.decisions.length > 0 && (
-            <>
-              <p style={{ fontWeight: 600, marginBottom: 6 }}>Принятые решения</p>
-              <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <div>
+              <p style={{ margin: "0 0 8px", fontWeight: 600, fontSize: "0.88em", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Принятые решения</p>
+              <ul style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 4 }}>
                 {structured.decisions.map((decision, i) => (
-                  <li key={i} style={{ marginBottom: 4, lineHeight: 1.5 }}>{decision}</li>
+                  <li key={i} style={{ lineHeight: 1.5 }}>{decision}</li>
                 ))}
               </ul>
-            </>
+            </div>
           )}
         </div>
       )}
       {summary && !structured && (
         <p style={{ margin: 0, lineHeight: 1.7 }}>{summary.text}</p>
       )}
-    </section>
+    </div>
   );
 };
+
+// ── TranscriptSection ──────────────────────────────────────────────────────
 
 const TranscriptSection = ({
   meetingId,
@@ -372,33 +480,30 @@ const TranscriptSection = ({
   });
 
   return (
-    <section className="card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h3 style={{ margin: 0 }}>Транскрипция</h3>
+    <div>
+      <div className="section-header">
+        <h3>Транскрипция</h3>
         {!editing ? (
-          <button onClick={startEdit} style={{ fontSize: "0.85em", padding: "5px 12px" }}>
-            Редактировать транскрипцию
+          <button className="btn btn-secondary btn-sm" onClick={startEdit}>
+            Редактировать
           </button>
         ) : (
           <div style={{ display: "flex", gap: 8 }}>
             <button
+              className="btn btn-primary btn-sm"
               onClick={() => save.mutate()}
               disabled={save.isPending}
-              style={{ fontSize: "0.85em", padding: "5px 12px" }}
             >
               {save.isPending ? "Сохранение..." : "Сохранить"}
             </button>
-            <button
-              onClick={cancelEdit}
-              style={{ fontSize: "0.85em", padding: "5px 12px", background: "none", color: "var(--text)", border: "1px solid var(--line)" }}
-            >
+            <button className="btn btn-secondary btn-sm" onClick={cancelEdit}>
               Отмена
             </button>
           </div>
         )}
       </div>
 
-      {save.isError && <p className="error">Не удалось сохранить транскрипцию</p>}
+      {save.isError && <p className="error" style={{ marginBottom: 8 }}>Не удалось сохранить транскрипцию</p>}
 
       {editing ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -419,7 +524,7 @@ const TranscriptSection = ({
                       updated[i] = { ...updated[i], speakerId: e.target.value || null };
                       setDraftSegments(updated);
                     }}
-                    style={{ fontSize: "0.78em", padding: "3px 6px", borderRadius: 6, border: "1px solid var(--line)", maxWidth: 130 }}
+                    style={{ fontSize: "0.78em", padding: "3px 6px", maxWidth: 130 }}
                   >
                     <option value="">— нет —</option>
                     {speakers.map((sp: any) => (
@@ -437,44 +542,36 @@ const TranscriptSection = ({
                     setDraftSegments(updated);
                   }}
                   rows={Math.max(1, Math.ceil(seg.text.length / 80))}
-                  style={{
-                    flex: 1,
-                    resize: "vertical",
-                    fontFamily: "inherit",
-                    fontSize: "0.9em",
-                    padding: "6px 10px",
-                    border: "1px solid var(--line)",
-                    borderRadius: 8,
-                    lineHeight: 1.5,
-                  }}
+                  style={{ flex: 1, resize: "vertical", fontSize: "0.9em", lineHeight: 1.5 }}
                 />
               </div>
             );
           })}
         </div>
       ) : (
-        transcriptLines.map((line: string, i: number) => (
-          <p key={i} style={{ margin: "2px 0" }}>{line}</p>
-        ))
+        <div style={{ display: "grid", gap: 2 }}>
+          {transcriptLines.length === 0
+            ? <p className="muted">Транскрипция отсутствует. Загрузите аудио/видео файл.</p>
+            : transcriptLines.map((line: string, i: number) => (
+                <p key={i} style={{ margin: 0, fontSize: "0.9em", lineHeight: 1.6 }}>{line}</p>
+              ))
+          }
+        </div>
       )}
-    </section>
+    </div>
   );
 };
 
+// ── TranscribingAnimation ──────────────────────────────────────────────────
+
 const TranscribingAnimation = () => (
-  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}>
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div className="spinner" />
     <span style={{ color: "var(--muted)", fontSize: "0.9em" }}>Идёт транскрибация…</span>
-    <div style={{
-      width: "1em",
-      height: "1em",
-      border: "2px solid var(--accent-soft)",
-      borderTopColor: "var(--accent)",
-      borderRadius: "50%",
-      animation: "spin 0.8s linear infinite",
-      flexShrink: 0,
-    }} />
   </div>
 );
+
+// ── TelegramRecipientPicker ────────────────────────────────────────────────
 
 const TelegramRecipientPicker = ({
   selected,
@@ -509,15 +606,13 @@ const TelegramRecipientPicker = ({
   });
 
   return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <p style={{ margin: 0, fontSize: "0.82em", color: "var(--muted)" }}>
-          Выберите получателей:
-        </p>
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <p style={{ margin: 0, fontSize: "0.85em", color: "var(--muted)" }}>Выберите получателей:</p>
         <button
+          className="btn btn-outline btn-sm"
           onClick={() => refresh.mutate()}
           disabled={refresh.isPending}
-          style={{ fontSize: "0.78em", padding: "3px 10px", background: "none", color: "var(--accent)", border: "1px solid var(--accent)" }}
         >
           {refresh.isPending ? "Обновление..." : "Обновить список"}
         </button>
@@ -536,14 +631,14 @@ const TelegramRecipientPicker = ({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Поиск по имени или @username..."
-          style={{ width: "100%", marginBottom: 6, fontSize: "0.88em", boxSizing: "border-box" }}
+          style={{ width: "100%", marginBottom: 8 }}
         />
       )}
 
       {filtered.map((contact) => (
         <label
           key={contact.chatId}
-          style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: "1px solid var(--line)", cursor: "pointer" }}
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: "1px solid var(--line)", cursor: "pointer" }}
         >
           <input
             type="checkbox"
@@ -553,8 +648,12 @@ const TelegramRecipientPicker = ({
           />
           <span style={{ fontSize: "0.9em" }}>
             <strong>{contact.name}</strong>
-            {contact.username && <span style={{ marginLeft: 6, color: "var(--muted)", fontSize: "0.85em" }}>@{contact.username}</span>}
-            {contact.type !== "private" && <span style={{ marginLeft: 6, fontSize: "0.78em", color: "var(--muted)" }}>({contact.type})</span>}
+            {contact.username && (
+              <span style={{ marginLeft: 6, color: "var(--muted)", fontSize: "0.85em" }}>@{contact.username}</span>
+            )}
+            {contact.type !== "private" && (
+              <span style={{ marginLeft: 6, fontSize: "0.78em", color: "var(--muted)" }}>({contact.type})</span>
+            )}
           </span>
         </label>
       ))}
@@ -572,239 +671,37 @@ const TelegramRecipientPicker = ({
   );
 };
 
-const MeetingDetailsPage = () => {
-  const { meetingId = "" } = useParams();
+// ── SpeakerRow ─────────────────────────────────────────────────────────────
+
+const SpeakerRow = ({ meetingId, speaker }: { meetingId: string; speaker: any }) => {
   const queryClient = useQueryClient();
-  const [question, setQuestion] = useState("");
-  const [target, setTarget] = useState<"EMAIL" | "TELEGRAM">("EMAIL");
-  const [destination, setDestination] = useState("");
-  const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
-
-  const meeting = useQuery({
-    queryKey: ["meeting", meetingId],
-    queryFn: async () => (await api.get(`/me/meetings/${meetingId}`)).data,
-    refetchInterval: (query) =>
-      query.state.data?.status === "PROCESSING" ? 3000 : false,
-  });
-
-  const ask = useMutation({
-    mutationFn: async () => (await api.post(`/me/meetings/${meetingId}/questions`, { question })).data,
-    onSuccess: () => {
-      setQuestion("");
-      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
-    },
-  });
-
-
-  const exportMutation = useMutation({
+  const [name, setName] = useState(speaker.confirmedName ?? "");
+  const update = useMutation({
     mutationFn: async () =>
-      (await api.post(`/me/meetings/${meetingId}/export`, target === "TELEGRAM"
-        ? { target, chatIds: Array.from(selectedChats) }
-        : { target, destination },
-      )).data,
+      (await api.patch(`/me/meetings/${meetingId}/speakers/${speaker.id}`, { confirmed_name: name || null })).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] }),
   });
-
-  const downloadTranscript = async () => {
-    const response = await api.get(`/me/meetings/${meetingId}/transcript.txt`, { responseType: "blob" });
-    const url = URL.createObjectURL(response.data);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `meeting-${meetingId}.txt`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      return (await api.post(`/me/meetings/${meetingId}/upload`, formData)).data;
-    },
-    onSuccess: () => {
-      setSelectedFile(null);
-      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
-    },
-  });
-
-  const meetingData = meeting.data;
-
-  const transcriptLines = useMemo(
-    () =>
-      meetingData?.transcript?.segments?.map((segment: any) => {
-        const date = new Date(segment.startSec * 1000).toISOString().substring(11, 19);
-        const speaker = segment.speaker?.confirmedName ?? segment.speaker?.suggestedName ?? segment.speaker?.autoLabel ?? "Speaker";
-        return `[${date}] ${speaker}: ${segment.text}`;
-      }) ?? [],
-    [meetingData],
-  );
-
-  const isProcessing = uploadMutation.isPending || meetingData?.status === "PROCESSING";
-
   return (
-    <AppShell>
-      {!meetingData && <p>Загрузка...</p>}
-      {meeting.isError && <p className="error">Не удалось загрузить детали встречи</p>}
-      {meetingData && (
-        <>
-          <section className="card">
-            <h2>{meetingData.title}</h2>
-            <p>
-              Статус: {meetingData.status} {meetingData.processingError ? `· ${meetingData.processingError}` : ""}
-            </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <label style={{ cursor: "pointer" }}>
-                <span
-                  style={{
-                    display: "inline-block",
-                    padding: "8px 14px",
-                    border: "1px solid var(--line)",
-                    borderRadius: 10,
-                    fontSize: "0.9em",
-                    background: "var(--surface)",
-                    cursor: "pointer",
-                  }}
-                >
-                  Загрузить аудио/видео
-                </span>
-                <input
-                  type="file"
-                  style={{ display: "none" }}
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
-                />
-              </label>
-              {selectedFile && (
-                <span style={{ fontSize: "0.85em", color: "var(--muted)", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {selectedFile.name}
-                </span>
-              )}
-              <button
-                onClick={() => selectedFile && uploadMutation.mutate(selectedFile)}
-                disabled={!selectedFile || uploadMutation.isPending}
-              >
-                {uploadMutation.isPending ? "Загрузка..." : "Транскрибировать"}
-              </button>
-              {isProcessing && <TranscribingAnimation />}
-              <button
-                onClick={downloadTranscript}
-                style={{ marginLeft: "auto" }}
-              >
-                Скачать transcript.txt
-              </button>
-            </div>
-            {uploadMutation.isError && <p className="error">Ошибка загрузки файла</p>}
-          </section>
-
-
-          <TranscriptSection meetingId={meetingId} meetingData={meetingData} transcriptLines={transcriptLines} />
-
-          <SpeakersSection meetingId={meetingId} speakers={meetingData.speakers} />
-
-          <SummarySection meetingId={meetingId} summary={meetingData.summary} />
-
-          <TasksSection meetingId={meetingId} tasks={meetingData.tasks} />
-
-          <section className="card">
-            <h3 style={{ marginBottom: 12 }}>Чат по встрече</h3>
-            {meetingData.questions.length > 0 && (
-              <div style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-                {meetingData.questions.map((item: any) => (
-                  <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                      <div style={{
-                        background: "var(--accent)",
-                        color: "#fff",
-                        borderRadius: "14px 14px 4px 14px",
-                        padding: "8px 14px",
-                        maxWidth: "80%",
-                        fontSize: "0.9em",
-                        lineHeight: 1.5,
-                      }}>
-                        {item.question}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "flex-start" }}>
-                      <div style={{
-                        background: "var(--surface)",
-                        border: "1px solid var(--line)",
-                        borderRadius: "14px 14px 14px 4px",
-                        padding: "8px 14px",
-                        maxWidth: "80%",
-                        fontSize: "0.9em",
-                        lineHeight: 1.6,
-                        whiteSpace: "pre-wrap",
-                      }}>
-                        {item.answer}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {meetingData.questions.length === 0 && (
-              <p className="muted" style={{ marginBottom: 12 }}>
-                Задайте вопрос по содержанию встречи — AI ответит на основе транскрипции.
-              </p>
-            )}
-            <form
-              className="inline-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (question.trim()) ask.mutate();
-              }}
-            >
-              <input
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Спросите что-нибудь о встрече..."
-                disabled={ask.isPending}
-                style={{ flex: 1 }}
-              />
-              <button type="submit" disabled={ask.isPending || !question.trim()}>
-                {ask.isPending ? "..." : "Спросить"}
-              </button>
-            </form>
-            {ask.isError && <p className="error" style={{ marginTop: 6 }}>Не удалось получить ответ</p>}
-          </section>
-
-          <section className="card">
-            <h3>Экспорт</h3>
-            <div className="inline-form" style={{ marginBottom: 8 }}>
-              <select value={target} onChange={(e) => { setTarget(e.target.value as "EMAIL" | "TELEGRAM"); setSelectedChats(new Set()); }}>
-                <option value="EMAIL">Email</option>
-                <option value="TELEGRAM">Telegram</option>
-              </select>
-              {target === "EMAIL" && (
-                <input
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  placeholder="your@email.com"
-                  style={{ flex: 1 }}
-                />
-              )}
-              <button
-                onClick={() => exportMutation.mutate()}
-                disabled={exportMutation.isPending || (target === "TELEGRAM" && selectedChats.size === 0) || (target === "EMAIL" && !destination)}
-              >
-                {exportMutation.isPending ? "Отправка..." : `Отправить${target === "TELEGRAM" && selectedChats.size > 0 ? ` (${selectedChats.size})` : ""}`}
-              </button>
-            </div>
-            {target === "TELEGRAM" && (
-              <TelegramRecipientPicker selected={selectedChats} onChange={setSelectedChats} />
-            )}
-            {exportMutation.isError && (
-              <p className="error" style={{ marginTop: 6 }}>
-                {(exportMutation.error as any)?.response?.data?.error ?? "Ошибка экспорта"}
-              </p>
-            )}
-            {exportMutation.isSuccess && <p style={{ color: "var(--accent)", marginTop: 6 }}>Экспорт выполнен</p>}
-          </section>
-        </>
-      )}
-    </AppShell>
+    <div className="list-row">
+      <div>
+        <strong>{speaker.autoLabel}</strong>
+        {speaker.suggestedName && (
+          <p style={{ margin: "2px 0 0", fontSize: "0.82em", color: "var(--muted)" }}>
+            предложено: {speaker.suggestedName}
+          </p>
+        )}
+      </div>
+      <div className="inline-form">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Подтверждённое имя" style={{ width: 180 }} />
+        <button className="btn btn-secondary btn-sm" onClick={() => update.mutate()}>
+          Сохранить
+        </button>
+      </div>
+    </div>
   );
 };
+
+// ── SpeakersSection ────────────────────────────────────────────────────────
 
 const SpeakersSection = ({ meetingId, speakers }: { meetingId: string; speakers: any[] }) => {
   const queryClient = useQueryClient();
@@ -825,18 +722,26 @@ const SpeakersSection = ({ meetingId, speakers }: { meetingId: string; speakers:
   });
 
   return (
-    <section className="card">
-      <h3 style={{ marginBottom: 12 }}>Спикеры</h3>
+    <div>
+      <div className="section-header">
+        <h3>Спикеры</h3>
+      </div>
+
+      {speakers.length === 0 && (
+        <p className="muted" style={{ marginBottom: 12 }}>Спикеры появятся после транскрибации с диаризацией.</p>
+      )}
+
       {speakers.map((speaker: any) => (
         <SpeakerRow key={speaker.id} meetingId={meetingId} speaker={speaker} />
       ))}
-      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+
+      <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
         <p style={{ margin: "0 0 8px", fontSize: "0.85em", color: "var(--muted)" }}>Добавить спикера вручную:</p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
-            placeholder="Метка (напр. Спикер 3)"
+            placeholder="Метка (напр. SPEAKER_3)"
             style={{ flex: 1, minWidth: 160 }}
           />
           <input
@@ -846,6 +751,7 @@ const SpeakersSection = ({ meetingId, speakers }: { meetingId: string; speakers:
             style={{ flex: 1, minWidth: 160 }}
           />
           <button
+            className="btn btn-secondary btn-sm"
             onClick={() => addSpeaker.mutate()}
             disabled={!newLabel || addSpeaker.isPending}
           >
@@ -854,99 +760,11 @@ const SpeakersSection = ({ meetingId, speakers }: { meetingId: string; speakers:
         </div>
         {addSpeaker.isError && <p className="error" style={{ marginTop: 6 }}>Не удалось добавить спикера</p>}
       </div>
-    </section>
-  );
-};
-
-const SpeakerRow = ({ meetingId, speaker }: { meetingId: string; speaker: any }) => {
-  const queryClient = useQueryClient();
-  const [name, setName] = useState(speaker.confirmedName ?? "");
-  const update = useMutation({
-    mutationFn: async () =>
-      (await api.patch(`/me/meetings/${meetingId}/speakers/${speaker.id}`, { confirmed_name: name || null })).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] }),
-  });
-  return (
-    <div className="list-row">
-      <div>
-        <strong>{speaker.autoLabel}</strong>
-        <p>suggested: {speaker.suggestedName ?? "-"}</p>
-      </div>
-      <div className="inline-form compact">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя" />
-        <button onClick={() => update.mutate()}>Сохранить</button>
-      </div>
     </div>
   );
 };
 
-const TasksSection = ({ meetingId, tasks }: { meetingId: string; tasks: any[] }) => {
-  const queryClient = useQueryClient();
-  const [newText, setNewText] = useState("");
-  const [newAssignee, setNewAssignee] = useState("");
-  const [newDueDate, setNewDueDate] = useState("");
-
-  const createTask = useMutation({
-    mutationFn: async () =>
-      (await api.post(`/me/meetings/${meetingId}/tasks`, {
-        text: newText,
-        assignee: newAssignee || undefined,
-        dueDate: newDueDate || undefined,
-      })).data,
-    onSuccess: () => {
-      setNewText("");
-      setNewAssignee("");
-      setNewDueDate("");
-      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
-    },
-  });
-
-  return (
-    <section className="card">
-      <h3 style={{ margin: "0 0 10px" }}>Задачи</h3>
-      {tasks.length > 0 && (
-        <div className="task-grid" style={{ color: "var(--muted)", fontSize: "0.78em", fontWeight: 600, paddingBottom: 4, borderBottom: "1px solid var(--line)", marginBottom: 4 }}>
-          <span>Задача</span>
-          <span>Ответственный</span>
-          <span>Срок</span>
-          <span />
-          <span />
-        </div>
-      )}
-      {tasks.length === 0 && (
-        <p className="muted" style={{ margin: "0 0 12px" }}>Задачи будут извлечены при нажатии «Получить саммари»</p>
-      )}
-      {tasks.map((task: any) => (
-        <TaskRow key={task.id} meetingId={meetingId} task={task} />
-      ))}
-      <div className="task-grid" style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
-        <input
-          value={newText}
-          onChange={(e) => setNewText(e.target.value)}
-          placeholder="Новая задача"
-        />
-        <input
-          value={newAssignee}
-          onChange={(e) => setNewAssignee(e.target.value)}
-          placeholder="Ответственный"
-        />
-        <input
-          value={newDueDate}
-          onChange={(e) => setNewDueDate(e.target.value)}
-          placeholder="Срок"
-        />
-        <button
-          onClick={() => createTask.mutate()}
-          disabled={!newText || createTask.isPending}
-        >
-          {createTask.isPending ? "..." : "+ Добавить"}
-        </button>
-        <span />
-      </div>
-      {createTask.isError && <p className="error" style={{ marginTop: 6 }}>Не удалось создать задачу</p>}
-    </section>
-  );
-};
+// ── TaskRow ────────────────────────────────────────────────────────────────
 
 const TaskRow = ({ meetingId, task }: { meetingId: string; task: any }) => {
   const queryClient = useQueryClient();
@@ -984,35 +802,29 @@ const TaskRow = ({ meetingId, task }: { meetingId: string; task: any }) => {
   return (
     <div className="task-grid">
       <input value={text} onChange={(e) => setText(e.target.value)} />
-      <input value={assignee} onChange={(e) => setAssignee(e.target.value)} />
-      <input value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-      <button onClick={() => update.mutate()} disabled={update.isPending}>
+      <input value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder="Ответственный" />
+      <input value={dueDate} onChange={(e) => setDueDate(e.target.value)} placeholder="Срок" />
+      <button className="btn btn-secondary btn-sm" onClick={() => update.mutate()} disabled={update.isPending}>
         {update.isPending ? "..." : "Сохранить"}
       </button>
       <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
         <button
+          className="btn btn-ghost btn-sm"
           onClick={() => setMenuOpen((v) => !v)}
-          style={{ background: "none", border: "none", color: "var(--muted)", fontSize: "1.2em", padding: "0 6px", cursor: "pointer", lineHeight: 1 }}
+          style={{ padding: "4px 8px" }}
         >
-          ···
+          <MoreHorizontal size={15} />
         </button>
         {menuOpen && (
-          <div style={{
-            position: "absolute", right: 0, top: "calc(100% + 2px)",
-            background: "var(--surface)", border: "1px solid var(--line)",
-            borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
-            minWidth: 120, zIndex: 100, overflow: "hidden",
-          }}>
+          <div className="dropdown-menu">
             <button
+              className="dropdown-item danger"
               onClick={() => {
                 setMenuOpen(false);
                 if (window.confirm("Удалить задачу?")) remove.mutate();
               }}
-              style={{ display: "block", width: "100%", background: "none", border: "none", borderRadius: 0, textAlign: "left", padding: "9px 14px", cursor: "pointer", color: "var(--danger)", fontSize: "0.88em" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
             >
-              Удалить
+              <Trash2 size={14} /> Удалить
             </button>
           </div>
         )}
@@ -1020,6 +832,359 @@ const TaskRow = ({ meetingId, task }: { meetingId: string; task: any }) => {
     </div>
   );
 };
+
+// ── TasksSection ───────────────────────────────────────────────────────────
+
+const TasksSection = ({ meetingId, tasks }: { meetingId: string; tasks: any[] }) => {
+  const queryClient = useQueryClient();
+  const [newText, setNewText] = useState("");
+  const [newAssignee, setNewAssignee] = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
+
+  const createTask = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/me/meetings/${meetingId}/tasks`, {
+        text: newText,
+        assignee: newAssignee || undefined,
+        dueDate: newDueDate || undefined,
+      })).data,
+    onSuccess: () => {
+      setNewText("");
+      setNewAssignee("");
+      setNewDueDate("");
+      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
+    },
+  });
+
+  return (
+    <div>
+      <div className="section-header">
+        <h3>Задачи</h3>
+      </div>
+
+      {tasks.length > 0 && (
+        <div className="task-grid" style={{ color: "var(--muted)", fontSize: "0.76em", fontWeight: 600, paddingBottom: 4, borderBottom: "1px solid var(--line)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <span>Задача</span>
+          <span>Ответственный</span>
+          <span>Срок</span>
+          <span />
+          <span />
+        </div>
+      )}
+      {tasks.length === 0 && (
+        <p className="muted" style={{ marginBottom: 12 }}>Задачи будут извлечены при нажатии «Получить саммари»</p>
+      )}
+      {tasks.map((task: any) => (
+        <TaskRow key={task.id} meetingId={meetingId} task={task} />
+      ))}
+
+      <div className="task-grid" style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+        <input
+          value={newText}
+          onChange={(e) => setNewText(e.target.value)}
+          placeholder="Новая задача"
+        />
+        <input
+          value={newAssignee}
+          onChange={(e) => setNewAssignee(e.target.value)}
+          placeholder="Ответственный"
+        />
+        <input
+          value={newDueDate}
+          onChange={(e) => setNewDueDate(e.target.value)}
+          placeholder="Срок"
+        />
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => createTask.mutate()}
+          disabled={!newText || createTask.isPending}
+        >
+          <Plus size={14} />
+          {createTask.isPending ? "..." : "Добавить"}
+        </button>
+        <span />
+      </div>
+      {createTask.isError && <p className="error" style={{ marginTop: 6 }}>Не удалось создать задачу</p>}
+    </div>
+  );
+};
+
+// ── MeetingDetailsPage ─────────────────────────────────────────────────────
+
+type TabKey = "transcript" | "speakers" | "summary" | "tasks" | "chat" | "export";
+
+const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
+  { key: "transcript", label: "Транскрипция", icon: <FileText size={14} /> },
+  { key: "speakers",   label: "Спикеры",      icon: <Users size={14} /> },
+  { key: "summary",    label: "Саммари",       icon: <Sparkles size={14} /> },
+  { key: "tasks",      label: "Задачи",        icon: <CheckSquare size={14} /> },
+  { key: "chat",       label: "Чат",           icon: <MessageCircle size={14} /> },
+  { key: "export",     label: "Экспорт",       icon: <Share2 size={14} /> },
+];
+
+const MeetingDetailsPage = () => {
+  const { meetingId = "" } = useParams();
+  const queryClient = useQueryClient();
+  const [tab, setTab] = useState<TabKey>("transcript");
+  const [question, setQuestion] = useState("");
+  const [target, setTarget] = useState<"EMAIL" | "TELEGRAM">("EMAIL");
+  const [destination, setDestination] = useState("");
+  const [selectedChats, setSelectedChats] = useState<Set<string>>(new Set());
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const meeting = useQuery({
+    queryKey: ["meeting", meetingId],
+    queryFn: async () => (await api.get(`/me/meetings/${meetingId}`)).data,
+    refetchInterval: (query) =>
+      query.state.data?.status === "PROCESSING" ? 3000 : false,
+  });
+
+  const ask = useMutation({
+    mutationFn: async () => (await api.post(`/me/meetings/${meetingId}/questions`, { question })).data,
+    onSuccess: () => {
+      setQuestion("");
+      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/me/meetings/${meetingId}/export`,
+        target === "TELEGRAM"
+          ? { target, chatIds: Array.from(selectedChats) }
+          : { target, destination },
+      )).data,
+  });
+
+  const downloadTranscript = async () => {
+    const response = await api.get(`/me/meetings/${meetingId}/transcript.txt`, { responseType: "blob" });
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `meeting-${meetingId}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return (await api.post(`/me/meetings/${meetingId}/upload`, formData)).data;
+    },
+    onSuccess: () => {
+      setSelectedFile(null);
+      queryClient.invalidateQueries({ queryKey: ["meeting", meetingId] });
+    },
+  });
+
+  const meetingData = meeting.data;
+
+  const transcriptLines = useMemo(
+    () =>
+      meetingData?.transcript?.segments?.map((segment: any) => {
+        const date = new Date(segment.startSec * 1000).toISOString().substring(11, 19);
+        const speaker = segment.speaker?.confirmedName ?? segment.speaker?.suggestedName ?? segment.speaker?.autoLabel ?? "Speaker";
+        return `[${date}] ${speaker}: ${segment.text}`;
+      }) ?? [],
+    [meetingData],
+  );
+
+  const isProcessing = uploadMutation.isPending || meetingData?.status === "PROCESSING";
+
+  return (
+    <AppShell>
+      {!meetingData && meeting.isLoading && <p className="muted">Загрузка...</p>}
+      {meeting.isError && <p className="error">Не удалось загрузить детали встречи</p>}
+      {meetingData && (
+        <>
+          {/* Шапка */}
+          <section className="card">
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <h2 style={{ margin: 0, fontSize: "1.25em", fontWeight: 700 }}>{meetingData.title}</h2>
+                  <StatusBadge status={meetingData.status} />
+                </div>
+                {meetingData.processingError && (
+                  <p className="error" style={{ marginTop: 4, fontSize: "0.85em" }}>{meetingData.processingError}</p>
+                )}
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={downloadTranscript} title="Скачать транскрипцию">
+                <Download size={15} /> Скачать .txt
+              </button>
+            </div>
+
+            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <label style={{ cursor: "pointer" }}>
+                <span className="btn btn-secondary btn-sm">
+                  <Upload size={14} /> Загрузить аудио/видео
+                </span>
+                <input
+                  type="file"
+                  style={{ display: "none" }}
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              {selectedFile && (
+                <span style={{ fontSize: "0.82em", color: "var(--muted)", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {selectedFile.name}
+                </span>
+              )}
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => selectedFile && uploadMutation.mutate(selectedFile)}
+                disabled={!selectedFile || uploadMutation.isPending}
+              >
+                {uploadMutation.isPending ? "Загрузка..." : "Транскрибировать"}
+              </button>
+              {isProcessing && <TranscribingAnimation />}
+            </div>
+            {uploadMutation.isError && <p className="error" style={{ marginTop: 8 }}>Ошибка загрузки файла</p>}
+          </section>
+
+          {/* Вкладки */}
+          <section className="card" style={{ padding: "0" }}>
+            <div className="tabs" style={{ padding: "0 20px" }}>
+              {TABS.map((t) => (
+                <button
+                  key={t.key}
+                  className={`tab-btn${tab === t.key ? " active" : ""}`}
+                  onClick={() => setTab(t.key)}
+                >
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="tab-panel" style={{ padding: "20px 24px" }}>
+              {tab === "transcript" && (
+                <TranscriptSection
+                  meetingId={meetingId}
+                  meetingData={meetingData}
+                  transcriptLines={transcriptLines}
+                />
+              )}
+
+              {tab === "speakers" && (
+                <SpeakersSection meetingId={meetingId} speakers={meetingData.speakers} />
+              )}
+
+              {tab === "summary" && (
+                <SummarySection meetingId={meetingId} summary={meetingData.summary} />
+              )}
+
+              {tab === "tasks" && (
+                <TasksSection meetingId={meetingId} tasks={meetingData.tasks} />
+              )}
+
+              {tab === "chat" && (
+                <div>
+                  <div className="section-header">
+                    <h3>Чат по встрече</h3>
+                  </div>
+                  {meetingData.questions.length === 0 && (
+                    <p className="muted" style={{ marginBottom: 14 }}>
+                      Задайте вопрос — AI ответит на основе транскрипции.
+                    </p>
+                  )}
+                  {meetingData.questions.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+                      {meetingData.questions.map((item: any) => (
+                        <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <div className="chat-bubble-user">{item.question}</div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                            <div className="chat-bubble-ai">{item.answer}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <form
+                    className="inline-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (question.trim()) ask.mutate();
+                    }}
+                  >
+                    <input
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      placeholder="Спросите что-нибудь о встрече..."
+                      disabled={ask.isPending}
+                      style={{ flex: 1 }}
+                    />
+                    <button className="btn btn-primary" type="submit" disabled={ask.isPending || !question.trim()}>
+                      {ask.isPending ? "..." : "Спросить"}
+                    </button>
+                  </form>
+                  {ask.isError && <p className="error" style={{ marginTop: 6 }}>Не удалось получить ответ</p>}
+                </div>
+              )}
+
+              {tab === "export" && (
+                <div>
+                  <div className="section-header">
+                    <h3>Экспорт</h3>
+                  </div>
+                  <div className="inline-form" style={{ marginBottom: 8 }}>
+                    <select
+                      value={target}
+                      onChange={(e) => {
+                        setTarget(e.target.value as "EMAIL" | "TELEGRAM");
+                        setSelectedChats(new Set());
+                      }}
+                    >
+                      <option value="EMAIL">Email</option>
+                      <option value="TELEGRAM">Telegram</option>
+                    </select>
+                    {target === "EMAIL" && (
+                      <input
+                        value={destination}
+                        onChange={(e) => setDestination(e.target.value)}
+                        placeholder="your@email.com"
+                        style={{ flex: 1 }}
+                      />
+                    )}
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => exportMutation.mutate()}
+                      disabled={
+                        exportMutation.isPending ||
+                        (target === "TELEGRAM" && selectedChats.size === 0) ||
+                        (target === "EMAIL" && !destination)
+                      }
+                    >
+                      <Share2 size={15} />
+                      {exportMutation.isPending
+                        ? "Отправка..."
+                        : `Отправить${target === "TELEGRAM" && selectedChats.size > 0 ? ` (${selectedChats.size})` : ""}`}
+                    </button>
+                  </div>
+                  {target === "TELEGRAM" && (
+                    <TelegramRecipientPicker selected={selectedChats} onChange={setSelectedChats} />
+                  )}
+                  {exportMutation.isError && (
+                    <p className="error" style={{ marginTop: 6 }}>
+                      {(exportMutation.error as any)?.response?.data?.error ?? "Ошибка экспорта"}
+                    </p>
+                  )}
+                  {exportMutation.isSuccess && (
+                    <p style={{ color: "var(--success)", marginTop: 6 }}>✓ Экспорт выполнен</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        </>
+      )}
+    </AppShell>
+  );
+};
+
+// ── Admin pages ────────────────────────────────────────────────────────────
 
 const AdminRunsPage = () => {
   const [status, setStatus] = useState("");
@@ -1050,7 +1215,7 @@ const AdminRunsPage = () => {
   return (
     <AppShell>
       <section className="card">
-        <h2>Run filters</h2>
+        <h2 style={{ margin: "0 0 14px" }}>Фильтры</h2>
         <div className="inline-form">
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Любой статус</option>
@@ -1062,39 +1227,42 @@ const AdminRunsPage = () => {
           </select>
           <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="User id" />
           <input value={userEmail} onChange={(e) => setUserEmail(e.target.value)} placeholder="User email" />
-          <label className="inline-form compact">
-            <span>From</span>
+          <label className="inline-form">
+            <span style={{ fontSize: "0.85em", color: "var(--muted)" }}>От</span>
             <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
           </label>
-          <label className="inline-form compact">
-            <span>To</span>
+          <label className="inline-form">
+            <span style={{ fontSize: "0.85em", color: "var(--muted)" }}>До</span>
             <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
           <select value={hasErrors} onChange={(e) => setHasErrors(e.target.value)}>
-            <option value="">Errors any</option>
-            <option value="true">Only with errors</option>
-            <option value="false">Only without errors</option>
+            <option value="">Ошибки: любые</option>
+            <option value="true">Только с ошибками</option>
+            <option value="false">Только без ошибок</option>
           </select>
         </div>
       </section>
 
       <section className="card">
-        <h2>Processing runs</h2>
-        {runs.isLoading && <p>Loading...</p>}
-        {runs.isError && <p className="error">Failed to load runs</p>}
+        <h2 style={{ margin: "0 0 14px" }}>Журнал обработок</h2>
+        {runs.isLoading && <p className="muted">Загрузка...</p>}
+        {runs.isError && <p className="error">Не удалось загрузить журнал</p>}
         {runs.data?.map((run: any) => (
           <div className="list-row" key={run.id}>
-            <div>
-              <strong>{run.meeting.title}</strong> <span className="muted">({run.status})</span>
-              <p>
-                user: {run.user.email} · model: {run.provider ?? "-"}/{run.model ?? "-"} · cost: {run.totalCost}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <strong>{run.meeting.title}</strong>
+                <span className="badge badge-created">{run.status}</span>
+              </div>
+              <p style={{ margin: "2px 0 0", fontSize: "0.82em", color: "var(--muted)" }}>
+                {run.user.email} · {run.provider ?? "-"}/{run.model ?? "-"} · cost: {run.totalCost}
               </p>
-              <p>
-                created: {new Date(run.createdAt).toLocaleString()} · steps: {run._count.steps}
-                {run.errorMessage ? ` · error: ${run.errorMessage}` : ""}
+              <p style={{ margin: "1px 0 0", fontSize: "0.78em", color: "var(--muted)" }}>
+                {new Date(run.createdAt).toLocaleString("ru")} · шагов: {run._count.steps}
+                {run.errorMessage ? ` · ошибка: ${run.errorMessage}` : ""}
               </p>
             </div>
-            <Link to={`/admin/runs/${run.id}`}>Details</Link>
+            <Link to={`/admin/runs/${run.id}`} className="btn btn-secondary btn-sm">Детали</Link>
           </div>
         ))}
       </section>
@@ -1122,34 +1290,37 @@ const AdminRunDetailsPage = () => {
   return (
     <AppShell>
       <section className="card">
-        <h2>Run details</h2>
-        <button
-          onClick={() => rerun.mutate()}
-          disabled={rerun.isPending}
-        >
-          Rerun
-        </button>
+        <div className="section-header">
+          <h2 style={{ margin: 0 }}>Детали запуска</h2>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => rerun.mutate()}
+            disabled={rerun.isPending}
+          >
+            {rerun.isPending ? "Запуск..." : "Перезапустить"}
+          </button>
+        </div>
         {details.data && (
           <div className="details-grid">
-            <p>Meeting: {details.data.meeting.title}</p>
-            <p>User: {details.data.user.email}</p>
-            <p>Status: {details.data.status}</p>
-            <p>Cost: {details.data.totalCost}</p>
-            <p>Duration: {details.data.durationMs ?? 0}ms</p>
-            <p>Транскрипция: {details.data.transcriptionProvider ?? "-"}/{details.data.transcriptionModel ?? "-"}</p>
-            <p>Постобработка: {details.data.postprocessingProvider ?? "-"}/{details.data.postprocessingModel ?? "-"}</p>
-            {details.data.errorMessage && <p className="error">Run error: {details.data.errorMessage}</p>}
+            <p><strong>Встреча:</strong> {details.data.meeting.title}</p>
+            <p><strong>Пользователь:</strong> {details.data.user.email}</p>
+            <p><strong>Статус:</strong> {details.data.status}</p>
+            <p><strong>Стоимость:</strong> {details.data.totalCost}</p>
+            <p><strong>Длительность:</strong> {details.data.durationMs ?? 0}ms</p>
+            <p><strong>Транскрипция:</strong> {details.data.transcriptionProvider ?? "-"}/{details.data.transcriptionModel ?? "-"}</p>
+            <p><strong>Постобработка:</strong> {details.data.postprocessingProvider ?? "-"}/{details.data.postprocessingModel ?? "-"}</p>
+            {details.data.errorMessage && <p className="error">Ошибка: {details.data.errorMessage}</p>}
           </div>
         )}
-        {details.isError && <p className="error">Failed to load run details</p>}
+        {details.isError && <p className="error">Не удалось загрузить детали</p>}
         {details.data?.steps?.map((step: any) => (
           <div className="list-row" key={step.id}>
             <div>
               <strong>{step.stepName}</strong>
-              <p>
+              <p style={{ margin: "2px 0 0", fontSize: "0.82em", color: "var(--muted)" }}>
                 {step.status} · {step.provider}/{step.model} · {step.durationMs}ms · cost: {step.cost}
               </p>
-              {step.errorMessage && <p className="error">{step.errorMessage}</p>}
+              {step.errorMessage && <p className="error" style={{ fontSize: "0.85em", marginTop: 2 }}>{step.errorMessage}</p>}
             </div>
           </div>
         ))}
@@ -1157,6 +1328,8 @@ const AdminRunDetailsPage = () => {
     </AppShell>
   );
 };
+
+// ── Admin Models ───────────────────────────────────────────────────────────
 
 type SttPreset = {
   name: string;
@@ -1276,56 +1449,26 @@ const SttPresetSelector = ({
   const renderPreset = (preset: SttPreset) => {
     const isActive = preset.provider === activeProvider && preset.model === activeModel;
     return (
-      <div
-        key={preset.provider + preset.model}
-        style={{
-          border: isActive ? "2px solid #3b82f6" : "1px solid #e5e7eb",
-          borderRadius: 8,
-          padding: "12px 14px",
-          marginBottom: 8,
-          background: isActive ? "#eff6ff" : "#fff",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 12,
-        }}
-      >
+      <div key={preset.provider + preset.model} className={`model-card${isActive ? " active" : ""}`}>
         <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
             <strong style={{ fontSize: "0.95em" }}>{preset.name}</strong>
-            <span style={{
-              fontSize: "0.72em",
-              fontWeight: 600,
-              padding: "2px 7px",
-              borderRadius: 99,
-              background: preset.tier === "free" ? "#dcfce7" : "#fef9c3",
-              color: preset.tier === "free" ? "#16a34a" : "#92400e",
-            }}>
-              {preset.price}
-            </span>
-            {preset.diarization && (
-              <span style={{ fontSize: "0.72em", padding: "2px 7px", borderRadius: 99, background: "#e0e7ff", color: "#3730a3" }}>
-                диаризация
-              </span>
-            )}
-            {isActive && (
-              <span style={{ fontSize: "0.72em", padding: "2px 7px", borderRadius: 99, background: "#dbeafe", color: "#1d4ed8", fontWeight: 700 }}>
-                АКТИВНА
-              </span>
-            )}
+            <span className={`badge badge-${preset.tier}`}>{preset.price}</span>
+            {preset.diarization && <span className="badge badge-diarize">диаризация</span>}
+            {isActive && <span className="badge badge-active">АКТИВНА</span>}
           </div>
-          <p style={{ margin: 0, fontSize: "0.82em", color: "#6b7280" }}>{preset.description}</p>
+          <p style={{ margin: 0, fontSize: "0.82em", color: "var(--muted)" }}>{preset.description}</p>
           <p style={{ margin: "4px 0 0", fontSize: "0.78em", color: "#9ca3af" }}>
-            Требует: <code style={{ background: "#f3f4f6", padding: "1px 5px", borderRadius: 4 }}>{preset.envVar}</code>
+            Требует: <code style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>{preset.envVar}</code>
             {preset.setupNote && (
-              <span> · <code style={{ background: "#f3f4f6", padding: "1px 5px", borderRadius: 4 }}>{preset.setupNote}</code></span>
+              <span> · <code style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>{preset.setupNote}</code></span>
             )}
           </p>
         </div>
         <button
+          className="btn btn-secondary btn-sm"
           onClick={() => onActivate(preset.provider, preset.model)}
           disabled={isActive || isPending}
-          style={{ flexShrink: 0, padding: "6px 14px", fontSize: "0.85em" }}
         >
           {isActive ? "Активна" : "Активировать"}
         </button>
@@ -1336,15 +1479,15 @@ const SttPresetSelector = ({
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div>
-          <strong>Активная модель: </strong>
-          <code style={{ background: "#f3f4f6", padding: "2px 8px", borderRadius: 4 }}>
+        <div style={{ fontSize: "0.9em" }}>
+          <strong>Активная: </strong>
+          <code style={{ background: "var(--surface-2)", padding: "2px 8px", borderRadius: 4 }}>
             {activeProvider}/{activeModel}
           </code>
         </div>
         <button
+          className="btn btn-ghost btn-sm"
           onClick={() => setShowCustom((v) => !v)}
-          style={{ fontSize: "0.82em", padding: "4px 10px" }}
         >
           {showCustom ? "Скрыть" : "Ввести вручную"}
         </button>
@@ -1355,6 +1498,7 @@ const SttPresetSelector = ({
           <input value={customProvider} onChange={(e) => setCustomProvider(e.target.value)} placeholder="provider" style={{ flex: 1 }} />
           <input value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="model" style={{ flex: 1 }} />
           <button
+            className="btn btn-primary btn-sm"
             onClick={() => customProvider && customModel && onActivate(customProvider, customModel)}
             disabled={!customProvider || !customModel || isPending}
           >
@@ -1363,11 +1507,34 @@ const SttPresetSelector = ({
         </div>
       )}
 
-      <p style={{ margin: "0 0 8px", fontSize: "0.82em", fontWeight: 600, color: "#374151" }}>Бесплатные</p>
+      <p style={{ margin: "0 0 8px", fontSize: "0.8em", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Бесплатные</p>
       {freePresets.map(renderPreset)}
 
-      <p style={{ margin: "16px 0 8px", fontSize: "0.82em", fontWeight: 600, color: "#374151" }}>Платные</p>
+      <p style={{ margin: "16px 0 8px", fontSize: "0.8em", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Платные</p>
       {paidPresets.map(renderPreset)}
+    </div>
+  );
+};
+
+const ModelConfigRow = ({
+  title,
+  model,
+  onSave,
+}: {
+  title: string;
+  model: any;
+  onSave: (provider: string, model: string) => void;
+}) => {
+  const [provider, setProvider] = useState(model.provider);
+  const [value, setValue] = useState(model.model);
+  return (
+    <div style={{ marginTop: title ? 8 : 0 }}>
+      {title && <p className="muted" style={{ marginBottom: 6 }}>Активная: <strong>{model.provider}/{model.model}</strong></p>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="provider (openai, ollama...)" style={{ flex: 1, minWidth: 160 }} />
+        <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="model name" style={{ flex: 1, minWidth: 160 }} />
+        <button className="btn btn-primary btn-sm" onClick={() => onSave(provider, value)}>Активировать</button>
+      </div>
     </div>
   );
 };
@@ -1396,7 +1563,8 @@ const AdminModelsPage = () => {
   return (
     <AppShell>
       <section className="card">
-        <h2>Настройки ИИ</h2>
+        <h2 style={{ margin: "0 0 20px" }}>Настройки ИИ</h2>
+
         {models.isError && (
           <p className="error">
             {(models.error as any)?.response?.status === 403
@@ -1405,7 +1573,7 @@ const AdminModelsPage = () => {
           </p>
         )}
 
-        <h3 style={{ marginTop: 0 }}>Транскрипция (STT)</h3>
+        <h3 style={{ margin: "0 0 12px" }}>Транскрипция (STT)</h3>
         {activeTranscription ? (
           <SttPresetSelector
             activeProvider={activeTranscription.provider}
@@ -1414,14 +1582,14 @@ const AdminModelsPage = () => {
             isPending={update.isPending}
           />
         ) : (
-          models.isLoading ? <p>Загрузка...</p> : null
+          models.isLoading ? <p className="muted">Загрузка...</p> : null
         )}
 
-        <hr style={{ margin: "24px 0", border: "none", borderTop: "1px solid #e5e7eb" }} />
+        <hr style={{ margin: "24px 0", border: "none", borderTop: "1px solid var(--line)" }} />
 
-        <h3>Постобработка (LLM)</h3>
-        <p className="muted" style={{ fontSize: "0.85em", marginTop: -8 }}>
-          Используется одновременно для суммаризации, задач, спикеров и Q&A по встрече.
+        <h3 style={{ margin: "0 0 4px" }}>Постобработка (LLM)</h3>
+        <p className="muted" style={{ fontSize: "0.85em", margin: "0 0 12px" }}>
+          Используется для суммаризации, задач, спикеров и Q&A по встрече.
         </p>
         {activePostprocessing && (
           <ModelConfigRow
@@ -1436,34 +1604,13 @@ const AdminModelsPage = () => {
         )}
 
         {update.isError && <p className="error" style={{ marginTop: 12 }}>Не удалось обновить модель</p>}
-        {update.isSuccess && <p style={{ color: "#16a34a", marginTop: 12 }}>✓ Модель обновлена</p>}
+        {update.isSuccess && <p style={{ color: "var(--success)", marginTop: 12 }}>✓ Модель обновлена</p>}
       </section>
     </AppShell>
   );
 };
 
-const ModelConfigRow = ({
-  title,
-  model,
-  onSave,
-}: {
-  title: string;
-  model: any;
-  onSave: (provider: string, model: string) => void;
-}) => {
-  const [provider, setProvider] = useState(model.provider);
-  const [value, setValue] = useState(model.model);
-  return (
-    <div style={{ marginTop: title ? 8 : 0 }}>
-      {title && <p className="muted" style={{ marginBottom: 6 }}>Активная: <strong>{model.provider}/{model.model}</strong></p>}
-      <div className="task-grid">
-        <input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="provider (openai, ollama...)" />
-        <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="model name" />
-        <button onClick={() => onSave(provider, value)}>Активировать</button>
-      </div>
-    </div>
-  );
-};
+// ── Admin Users ────────────────────────────────────────────────────────────
 
 const AdminUsersPage = () => {
   const queryClient = useQueryClient();
@@ -1525,23 +1672,24 @@ const AdminUsersPage = () => {
       <section className="card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h2 style={{ margin: 0 }}>Пользователи</h2>
-          <button onClick={() => setShowCreate((v) => !v)}>
-            {showCreate ? "Отмена" : "+ Добавить"}
+          <button className="btn btn-primary btn-sm" onClick={() => setShowCreate((v) => !v)}>
+            {showCreate ? "Отмена" : <><Plus size={14} /> Добавить</>}
           </button>
         </div>
 
         {showCreate && (
-          <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 16, marginBottom: 16, background: "#f9fafb" }}>
+          <div style={{ border: "1px solid var(--line)", borderRadius: "var(--radius-sm)", padding: 16, marginBottom: 16, background: "var(--surface-2)" }}>
             <p style={{ margin: "0 0 12px", fontWeight: 600 }}>Новый пользователь</p>
-            <div className="task-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr auto auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto", gap: 8 }}>
               <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Email" />
               <input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Пароль (мин. 6)" type="password" />
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Имя (необязательно)" />
-              <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", fontSize: "0.9em" }}>
                 <input type="checkbox" checked={newIsAdmin} onChange={(e) => setNewIsAdmin(e.target.checked)} />
                 Admin
               </label>
               <button
+                className="btn btn-primary btn-sm"
                 onClick={() => createUser.mutate()}
                 disabled={!newEmail || !newPassword || createUser.isPending}
               >
@@ -1560,26 +1708,26 @@ const AdminUsersPage = () => {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Поиск по email или имени…"
-          style={{ width: "100%", marginBottom: 12, boxSizing: "border-box" }}
+          style={{ width: "100%", marginBottom: 12 }}
         />
 
-        {users.isLoading && <p>Загрузка...</p>}
+        {users.isLoading && <p className="muted">Загрузка...</p>}
         {users.isError && <p className="error">Не удалось загрузить пользователей</p>}
 
         {users.data?.map((user: any) => (
-          <div key={user.id} style={{ borderBottom: "1px solid #f3f4f6", padding: "12px 0" }}>
+          <div key={user.id} style={{ borderBottom: "1px solid var(--line)", padding: "12px 0" }}>
             {editingId === user.id ? (
               <div>
-                <div className="task-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr auto auto auto" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto auto", gap: 8 }}>
                   <input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="Email" />
                   <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Имя" />
                   <input value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="Новый пароль (необязательно)" type="password" />
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", fontSize: "0.9em" }}>
                     <input type="checkbox" checked={editIsAdmin} onChange={(e) => setEditIsAdmin(e.target.checked)} />
                     Admin
                   </label>
-                  <button onClick={() => updateUser.mutate(user.id)} disabled={updateUser.isPending}>Сохранить</button>
-                  <button onClick={() => setEditingId(null)}>Отмена</button>
+                  <button className="btn btn-primary btn-sm" onClick={() => updateUser.mutate(user.id)} disabled={updateUser.isPending}>Сохранить</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setEditingId(null)}>Отмена</button>
                 </div>
                 {updateUser.isError && (
                   <p className="error" style={{ marginTop: 6 }}>
@@ -1590,13 +1738,11 @@ const AdminUsersPage = () => {
             ) : (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <strong>{user.email}</strong>
-                  {user.name && <span className="muted"> · {user.name}</span>}
-                  {user.isAdmin && (
-                    <span style={{ marginLeft: 8, fontSize: "0.75em", padding: "2px 8px", borderRadius: 99, background: "#fef3c7", color: "#92400e", fontWeight: 700 }}>
-                      ADMIN
-                    </span>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <strong>{user.email}</strong>
+                    {user.name && <span className="muted" style={{ fontSize: "0.9em" }}>{user.name}</span>}
+                    {user.isAdmin && <span className="badge badge-admin">ADMIN</span>}
+                  </div>
                   <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.8em" }}>
                     Создан: {new Date(user.createdAt).toLocaleDateString("ru")}
                     {" · "}встречи: {user._count.createdMeetings}
@@ -1604,14 +1750,14 @@ const AdminUsersPage = () => {
                   </p>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => startEdit(user)} style={{ fontSize: "0.85em" }}>Редактировать</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => startEdit(user)}>Редактировать</button>
                   <button
+                    className="btn btn-danger btn-sm"
                     onClick={() => {
                       if (window.confirm(`Удалить пользователя ${user.email}? Это действие нельзя отменить.`)) {
                         deleteUser.mutate(user.id);
                       }
                     }}
-                    style={{ fontSize: "0.85em", color: "#dc2626", borderColor: "#fca5a5" }}
                     disabled={deleteUser.isPending}
                   >
                     Удалить
@@ -1626,79 +1772,27 @@ const AdminUsersPage = () => {
   );
 };
 
+// ── Guard ──────────────────────────────────────────────────────────────────
+
 const Guard = ({ children }: { children: ReactNode }) => {
   if (!hasToken()) {
     return <Navigate to="/login" replace />;
   }
-  return (
-    <div>
-      <div className="top-bar">
-        <button
-          onClick={() => {
-            clearToken();
-            window.location.href = "/login";
-          }}
-        >
-          Logout
-        </button>
-      </div>
-      {children}
-    </div>
-  );
+  return <>{children}</>;
 };
+
+// ── App ────────────────────────────────────────────────────────────────────
 
 export const App = () => (
   <Routes>
     <Route path="/login" element={<AuthPage mode="login" />} />
     <Route path="/register" element={<AuthPage mode="register" />} />
-    <Route
-      path="/meetings"
-      element={
-        <Guard>
-          <MeetingsPage />
-        </Guard>
-      }
-    />
-    <Route
-      path="/meetings/:meetingId"
-      element={
-        <Guard>
-          <MeetingDetailsPage />
-        </Guard>
-      }
-    />
-    <Route
-      path="/admin/runs"
-      element={
-        <Guard>
-          <AdminRunsPage />
-        </Guard>
-      }
-    />
-    <Route
-      path="/admin/runs/:runId"
-      element={
-        <Guard>
-          <AdminRunDetailsPage />
-        </Guard>
-      }
-    />
-    <Route
-      path="/admin/models"
-      element={
-        <Guard>
-          <AdminModelsPage />
-        </Guard>
-      }
-    />
-    <Route
-      path="/admin/users"
-      element={
-        <Guard>
-          <AdminUsersPage />
-        </Guard>
-      }
-    />
-    <Route path="*" element={<Navigate to={hasToken() ? "/meetings" : "/login"} replace />} />
+    <Route path="/meetings" element={<Guard><MeetingsPage /></Guard>} />
+    <Route path="/meetings/:meetingId" element={<Guard><MeetingDetailsPage /></Guard>} />
+    <Route path="/admin/runs" element={<Guard><AdminRunsPage /></Guard>} />
+    <Route path="/admin/runs/:runId" element={<Guard><AdminRunDetailsPage /></Guard>} />
+    <Route path="/admin/models" element={<Guard><AdminModelsPage /></Guard>} />
+    <Route path="/admin/users" element={<Guard><AdminUsersPage /></Guard>} />
+    <Route path="*" element={<Navigate to="/meetings" replace />} />
   </Routes>
 );
