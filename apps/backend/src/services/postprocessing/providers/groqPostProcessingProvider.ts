@@ -2,9 +2,9 @@ import { config } from "../../../config";
 import { ANALYSIS_SYSTEM_PROMPT, parseAnalysisResult } from "../prompt";
 import type { AnalysisResult, ExtractedTask, PostprocessingAdapter, StructuredSummary } from "../types";
 
-// GPT-4o pricing: $2.50/1M input, $10.00/1M output tokens
-const INPUT_COST_PER_TOKEN = 2.50 / 1_000_000;
-const OUTPUT_COST_PER_TOKEN = 10.00 / 1_000_000;
+// Groq LLaMA-3.3-70b — бесплатно (30 req/min, 6000 req/day)
+const INPUT_COST_PER_TOKEN = 0;
+const OUTPUT_COST_PER_TOKEN = 0;
 
 type ChatMessage = { role: "system" | "user"; content: string };
 
@@ -14,24 +14,24 @@ type ChatResponse = {
 };
 
 async function chat(messages: ChatMessage[], jsonMode = false): Promise<{ text: string; cost: number }> {
-  const apiKey = config.openaiApiKey;
-  if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
+  const apiKey = config.groqApiKey;
+  if (!apiKey) throw new Error("GROQ_API_KEY is not configured");
 
   const body: Record<string, unknown> = {
-    model: "gpt-4o",
+    model: "llama-3.3-70b-versatile",
     messages,
     temperature: 0.3,
   };
   if (jsonMode) body.response_format = { type: "json_object" };
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI Chat API error ${response.status}: ${await response.text()}`);
+    throw new Error(`Groq Chat API error ${response.status}: ${await response.text()}`);
   }
 
   const data = (await response.json()) as ChatResponse;
@@ -43,7 +43,7 @@ async function chat(messages: ChatMessage[], jsonMode = false): Promise<{ text: 
   return { text, cost };
 }
 
-export class OpenAIPostProcessingProvider implements PostprocessingAdapter {
+export class GroqPostProcessingProvider implements PostprocessingAdapter {
   async analyze(transcriptText: string): Promise<{ result: AnalysisResult; cost: number }> {
     const { text, cost } = await chat(
       [{ role: "system", content: ANALYSIS_SYSTEM_PROMPT }, { role: "user", content: transcriptText }],

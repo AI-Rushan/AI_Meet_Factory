@@ -17,6 +17,7 @@ type AssemblyTranscript = {
   text: string | null;
   utterances: AssemblyUtterance[] | null;
   audio_duration: number | null;
+  speech_model_used: string | null;
   error: string | null;
 };
 
@@ -48,17 +49,21 @@ export class AssemblyAITranscriptionProvider implements TranscriptionAdapter {
     const submitBody = isMultichannel
       ? {
           audio_url: upload_url,
+          speech_models: ["universal-3-pro", "universal-2"],
           multichannel: true,
           language_code: "ru",
           punctuate: true,
           format_text: true,
+          entity_detection: true,
         }
       : {
           audio_url: upload_url,
+          speech_models: ["universal-3-pro", "universal-2"],
           speaker_labels: true,
           language_code: "ru",
           punctuate: true,
           format_text: true,
+          entity_detection: true,
         };
 
     const submitResp = await fetch(`${ASSEMBLY_URL}/transcript`, {
@@ -100,7 +105,7 @@ export class AssemblyAITranscriptionProvider implements TranscriptionAdapter {
           ? segments
           : [{ speakerKey: "SPEAKER_1", startSec: 0, endSec: durationSec, text: data.text ?? "" }],
         provider: "assemblyai",
-        model: "best",
+        model: data.speech_model_used ?? "universal-2",
         cost: parseFloat(((durationSec / 60) * 0.0062).toFixed(4)),
       };
     }

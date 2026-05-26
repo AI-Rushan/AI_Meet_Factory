@@ -1,33 +1,27 @@
-import { ExtractedTask, PostprocessingAdapter, StructuredSummary } from "../types";
+import { AnalysisResult, ExtractedTask, PostprocessingAdapter, StructuredSummary } from "../types";
+
+const MOCK_RESULT: AnalysisResult = {
+  summary: {
+    topics: ["Обсуждение целей встречи", "Запуск нового лендинга", "Интеграция CRM"],
+    decisions: ["Запустить лендинг на следующей неделе", "Начать интеграцию с CRM"],
+  },
+  tasks: [
+    { text: "Подготовить новый лендинг", assignee: null, dueDate: null },
+    { text: "Запустить интеграцию с CRM", assignee: null, dueDate: "следующая неделя" },
+  ],
+};
 
 export class MockPostProcessingProvider implements PostprocessingAdapter {
-  async summarize(_transcriptText: string): Promise<{ summary: StructuredSummary; cost: number }> {
-    return {
-      summary: {
-        topics: ["Обсуждение целей встречи", "Запуск нового лендинга", "Интеграция CRM"],
-        decisions: ["Запустить лендинг на следующей неделе", "Начать интеграцию с CRM"],
-      },
-      cost: 0,
-    };
+  async analyze(_transcriptText: string): Promise<{ result: AnalysisResult; cost: number }> {
+    return { result: MOCK_RESULT, cost: 0 };
   }
 
+  async summarize(_transcriptText: string): Promise<{ summary: StructuredSummary; cost: number }> {
+    return { summary: MOCK_RESULT.summary, cost: 0 };
+  }
 
   async extractTasks(_transcriptText: string): Promise<{ tasks: ExtractedTask[]; cost: number }> {
-    return {
-      tasks: [
-        {
-          text: "Подготовить новый лендинг",
-          assignee: "ответственный не определен",
-          dueDate: "срок не установлен",
-        },
-        {
-          text: "Запустить интеграцию с CRM",
-          assignee: "ответственный не определен",
-          dueDate: "следующая неделя",
-        },
-      ],
-      cost: 0,
-    };
+    return { tasks: MOCK_RESULT.tasks, cost: 0 };
   }
 
   async suggestSpeakerNames(

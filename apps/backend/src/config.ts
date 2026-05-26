@@ -24,6 +24,9 @@ export const config = {
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
   smtpHost: process.env.SMTP_HOST ?? "localhost",
   smtpPort: Number(process.env.SMTP_PORT ?? 1025),
+  smtpUser: process.env.SMTP_USER ?? "",
+  smtpPass: process.env.SMTP_PASS ?? "",
   smtpFrom: process.env.SMTP_FROM ?? "meeting-ai@example.local",
+  resendApiKey: process.env.RESEND_API_KEY ?? "",
   appUrl: process.env.APP_URL ?? "http://localhost:5173",
 };

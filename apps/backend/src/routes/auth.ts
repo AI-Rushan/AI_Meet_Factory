@@ -70,7 +70,8 @@ authRouter.post("/forgot-password", async (req, res) => {
     await authService.forgotPassword(payload.data);
     // Always respond with 200 to avoid email enumeration
     res.json({ ok: true });
-  } catch {
+  } catch (err) {
+    console.error("[forgot-password] error:", err);
     res.status(500).json({ error: "Failed to send reset email" });
   }
 });

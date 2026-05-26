@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
-import nodemailer from "nodemailer";
 import { MembershipRole, WorkspaceKind } from "@prisma/client";
 import { prisma } from "../db";
 import { config } from "../config";
 import { hashPassword, verifyPassword } from "../lib/hash";
 import { signToken, type AuthPayload } from "../lib/jwt";
+import { sendMail } from "../lib/mailer";
 import type { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from "../dto/auth";
 
 const pickActiveWorkspaceId = (
@@ -96,27 +96,33 @@ export const authService = {
   },
 
   async forgotPassword(payload: ForgotPasswordDto): Promise<void> {
+    console.log("[forgotPassword] looking up email:", payload.email);
     const user = await prisma.user.findUnique({ where: { email: payload.email } });
-    if (!user) return; // not revealing whether email exists
+    if (!user) {
+      console.log("[forgotPassword] user not found, returning silently");
+      return;
+    }
+    console.log("[forgotPassword] user found:", user.id);
 
     const token = crypto.randomBytes(32).toString("hex");
-    const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
 
     await prisma.user.update({
       where: { id: user.id },
       data: { passwordResetToken: token, passwordResetExpires: expires },
     });
+    console.log("[forgotPassword] token saved to DB");
 
     const resetUrl = `${config.appUrl}/reset-password?token=${token}`;
-    const transporter = nodemailer.createTransport({ host: config.smtpHost, port: config.smtpPort });
+    console.log("[forgotPassword] sending mail to:", user.email);
 
-    await transporter.sendMail({
-      from: config.smtpFrom,
+    await sendMail({
       to: user.email,
-      subject: "Восстановление пароля",
+      subject: "Восстановление пароля — Meeting AI",
       text: `Для сброса пароля перейдите по ссылке:\n\n${resetUrl}\n\nСсылка действует 15 минут. Если вы не запрашивали сброс пароля — проигнорируйте это письмо.`,
       html: `<p>Для сброса пароля перейдите по ссылке:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>Ссылка действует 15 минут. Если вы не запрашивали сброс пароля — проигнорируйте это письмо.</p>`,
     });
+    console.log("[forgotPassword] mail sent OK");
   },
 
   async resetPassword(payload: ResetPasswordDto): Promise<void> {

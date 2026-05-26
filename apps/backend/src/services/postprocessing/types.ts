@@ -9,7 +9,13 @@ export type StructuredSummary = {
   decisions: string[];
 };
 
+export type AnalysisResult = {
+  summary: StructuredSummary;
+  tasks: ExtractedTask[];
+};
+
 export interface PostprocessingAdapter {
+  analyze(transcriptText: string): Promise<{ result: AnalysisResult; cost: number }>;
   summarize(transcriptText: string): Promise<{ summary: StructuredSummary; cost: number }>;
   extractTasks(transcriptText: string): Promise<{ tasks: ExtractedTask[]; cost: number }>;
   suggestSpeakerNames(

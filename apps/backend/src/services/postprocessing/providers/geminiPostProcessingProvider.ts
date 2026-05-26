@@ -1,5 +1,6 @@
 import { config } from "../../../config";
-import { ExtractedTask, PostprocessingAdapter, StructuredSummary } from "../types";
+import { ANALYSIS_SYSTEM_PROMPT, parseAnalysisResult } from "../prompt";
+import type { AnalysisResult, ExtractedTask, PostprocessingAdapter, StructuredSummary } from "../types";
 
 const API_BASE = "https://generativelanguage.googleapis.com";
 const MODEL = "gemini-2.0-flash";
@@ -13,10 +14,7 @@ type GeminiResponse = {
   usageMetadata?: { promptTokenCount: number; candidatesTokenCount: number };
 };
 
-async function generate(
-  systemInstruction: string,
-  userText: string,
-): Promise<{ text: string; cost: number }> {
+async function generate(userText: string): Promise<{ text: string; cost: number }> {
   const apiKey = config.geminiApiKey;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
 
@@ -26,7 +24,7 @@ async function generate(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
+        systemInstruction: { parts: [{ text: ANALYSIS_SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: userText }] }],
         generationConfig: { responseMimeType: "application/json" },
       }),
@@ -47,41 +45,19 @@ async function generate(
 }
 
 export class GeminiPostProcessingProvider implements PostprocessingAdapter {
+  async analyze(transcriptText: string): Promise<{ result: AnalysisResult; cost: number }> {
+    const { text, cost } = await generate(transcriptText);
+    return { result: parseAnalysisResult(text), cost };
+  }
+
   async summarize(transcriptText: string): Promise<{ summary: StructuredSummary; cost: number }> {
-    const { text, cost } = await generate(
-      'Ты помощник для обработки встреч. Верни JSON объект с двумя полями: "topics" — массив строк с ключевыми темами обсуждения (3-7 тем), "decisions" — массив строк с принятыми решениями (может быть пустым). Все строки на русском языке.',
-      transcriptText,
-    );
-
-    let summary: StructuredSummary = { topics: [], decisions: [] };
-    try {
-      const parsed = JSON.parse(text) as Partial<StructuredSummary>;
-      summary = {
-        topics: Array.isArray(parsed.topics) ? parsed.topics : [],
-        decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
-      };
-    } catch {
-      summary = { topics: [text], decisions: [] };
-    }
-
-    return { summary, cost };
+    const { result, cost } = await this.analyze(transcriptText);
+    return { summary: result.summary, cost };
   }
 
   async extractTasks(transcriptText: string): Promise<{ tasks: ExtractedTask[]; cost: number }> {
-    const { text, cost } = await generate(
-      'Извлеки задачи из транскрипции встречи. Верни JSON объект с полем "tasks" — массив объектов: {"text": "описание задачи", "assignee": "имя или null", "dueDate": "дата/срок или null"}. Все поля строковые или null.',
-      transcriptText,
-    );
-
-    let tasks: ExtractedTask[] = [];
-    try {
-      const parsed = JSON.parse(text) as { tasks?: ExtractedTask[] };
-      tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
-    } catch {
-      tasks = [];
-    }
-
-    return { tasks, cost };
+    const { result, cost } = await this.analyze(transcriptText);
+    return { tasks: result.tasks, cost };
   }
 
   async suggestSpeakerNames(
@@ -91,10 +67,26 @@ export class GeminiPostProcessingProvider implements PostprocessingAdapter {
     if (speakerLabels.length === 0) return { suggestions: {}, cost: 0 };
 
     const labelsStr = speakerLabels.join(", ");
-    const { text, cost } = await generate(
-      `Проанализируй транскрипцию и предложи имена для спикеров: ${labelsStr}. Верни JSON объект где ключи — метки спикеров, значения — предполагаемые имена на основе контекста. Если имя не определяется — используй "Участник N".`,
-      transcriptText,
+    const response = await fetch(
+      `${API_BASE}/v1beta/models/${MODEL}:generateContent?key=${config.geminiApiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: `Проанализируй транскрипцию и предложи имена для спикеров: ${labelsStr}. Верни JSON объект где ключи — метки спикеров, значения — предполагаемые имена на основе контекста разговора. Если имя не определяется — используй "Участник N".` }] },
+          contents: [{ role: "user", parts: [{ text: transcriptText }] }],
+          generationConfig: { responseMimeType: "application/json" },
+        }),
+      },
     );
+
+    if (!response.ok) throw new Error(`Gemini API error ${response.status}: ${await response.text()}`);
+
+    const data = (await response.json()) as GeminiResponse;
+    const text = data.candidates[0]?.content?.parts[0]?.text ?? "";
+    const inputTokens = data.usageMetadata?.promptTokenCount ?? 0;
+    const outputTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
+    const cost = inputTokens * INPUT_COST_PER_TOKEN + outputTokens * OUTPUT_COST_PER_TOKEN;
 
     let suggestions: Record<string, string> = {};
     try {
@@ -113,10 +105,26 @@ export class GeminiPostProcessingProvider implements PostprocessingAdapter {
     transcriptText: string,
     question: string,
   ): Promise<{ answer: string; cost: number }> {
-    const { text, cost } = await generate(
-      "Ты помощник по анализу встреч. Отвечай на вопросы строго на основе предоставленной транскрипции. Если ответа нет в тексте — скажи об этом.",
-      `Транскрипция встречи:\n${transcriptText}\n\nВопрос: ${question}`,
+    const response = await fetch(
+      `${API_BASE}/v1beta/models/${MODEL}:generateContent?key=${config.geminiApiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: "Ты помощник по анализу встреч. Отвечай на вопросы пользователя строго на основе предоставленной транскрипции. Если ответа нет в тексте — скажи об этом." }] },
+          contents: [{ role: "user", parts: [{ text: `Транскрипция встречи:\n${transcriptText}\n\nВопрос: ${question}` }] }],
+        }),
+      },
     );
+
+    if (!response.ok) throw new Error(`Gemini API error ${response.status}: ${await response.text()}`);
+
+    const data = (await response.json()) as GeminiResponse;
+    const text = data.candidates[0]?.content?.parts[0]?.text ?? "";
+    const inputTokens = data.usageMetadata?.promptTokenCount ?? 0;
+    const outputTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
+    const cost = inputTokens * INPUT_COST_PER_TOKEN + outputTokens * OUTPUT_COST_PER_TOKEN;
+
     return { answer: text, cost };
   }
 }

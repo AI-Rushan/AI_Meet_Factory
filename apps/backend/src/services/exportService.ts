@@ -1,6 +1,6 @@
-import nodemailer from "nodemailer";
 import { prisma } from "../db";
 import { config } from "../config";
+import { sendMail } from "../lib/mailer";
 
 export const renderTranscriptText = async (meetingId: string): Promise<string> => {
   const meeting = await prisma.meeting.findUniqueOrThrow({
@@ -74,17 +74,7 @@ export const renderMeetingText = async (meetingId: string): Promise<string> => {
 
 export const exportToEmail = async (meetingId: string, destination: string): Promise<void> => {
   const text = await renderMeetingText(meetingId);
-  const transporter = nodemailer.createTransport({
-    host: config.smtpHost,
-    port: config.smtpPort,
-  });
-
-  await transporter.sendMail({
-    from: config.smtpFrom,
-    to: destination,
-    subject: "Meeting export",
-    text,
-  });
+  await sendMail({ to: destination, subject: "Meeting export", text });
 };
 
 export const exportToTelegram = async (meetingId: string, chatIds: string[]): Promise<void> => {

@@ -456,7 +456,7 @@ const MeetingsPage = () => {
   const [title, setTitle] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [order, setOrder] = useState<"asc" | "desc">("asc");
+  const [order, setOrder] = useState<"asc" | "desc">("desc");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -1606,6 +1606,145 @@ const AdminRunDetailsPage = () => {
 
 // ── Admin Models ───────────────────────────────────────────────────────────
 
+type LlmPreset = {
+  name: string;
+  provider: string;
+  model: string;
+  tier: "free" | "paid";
+  price: string;
+  description: string;
+  envVar: string;
+};
+
+const LLM_PRESETS: LlmPreset[] = [
+  {
+    name: "Groq LLaMA-3.3-70b",
+    provider: "groq",
+    model: "llama-3.3-70b-versatile",
+    tier: "free",
+    price: "Бесплатно",
+    description: "Быстрая и бесплатная LLaMA через Groq API. Лимит: 30 req/мин, 6000 req/день.",
+    envVar: "GROQ_API_KEY",
+  },
+  {
+    name: "Mock (разработка)",
+    provider: "mock",
+    model: "-",
+    tier: "free",
+    price: "Бесплатно",
+    description: "Возвращает фиктивные данные. Только для тестирования без API-ключей.",
+    envVar: "—",
+  },
+  {
+    name: "OpenAI GPT-4o",
+    provider: "openai",
+    model: "gpt-4o",
+    tier: "paid",
+    price: "$2.50/1M",
+    description: "Лучшее качество саммари и задач. Флагманская модель OpenAI.",
+    envVar: "OPENAI_API_KEY",
+  },
+  {
+    name: "OpenAI GPT-4o-mini",
+    provider: "openai",
+    model: "gpt-4o-mini",
+    tier: "paid",
+    price: "$0.15/1M",
+    description: "Быстрее и дешевле GPT-4o, качество чуть ниже.",
+    envVar: "OPENAI_API_KEY",
+  },
+  {
+    name: "Google Gemini 2.0 Flash",
+    provider: "gemini",
+    model: "gemini-2.0-flash",
+    tier: "paid",
+    price: "$0.10/1M",
+    description: "Быстрая модель Google с хорошим качеством на русском.",
+    envVar: "GEMINI_API_KEY",
+  },
+];
+
+const LlmPresetSelector = ({
+  activeProvider,
+  activeModel,
+  onActivate,
+  isPending,
+}: {
+  activeProvider: string;
+  activeModel: string;
+  onActivate: (provider: string, model: string) => void;
+  isPending: boolean;
+}) => {
+  const [customProvider, setCustomProvider] = useState("");
+  const [customModel, setCustomModel] = useState("");
+  const [showCustom, setShowCustom] = useState(false);
+
+  const freePresets = LLM_PRESETS.filter((p) => p.tier === "free");
+  const paidPresets = LLM_PRESETS.filter((p) => p.tier === "paid");
+
+  const renderPreset = (preset: LlmPreset) => {
+    const isActive = preset.provider === activeProvider && preset.model === activeModel;
+    return (
+      <div key={preset.provider + preset.model} className={`model-card${isActive ? " active" : ""}`}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: "0.95em" }}>{preset.name}</strong>
+            <span className={`badge badge-${preset.tier}`}>{preset.price}</span>
+            {isActive && <span className="badge badge-active">АКТИВНА</span>}
+          </div>
+          <p style={{ margin: 0, fontSize: "0.82em", color: "var(--muted)" }}>{preset.description}</p>
+          <p style={{ margin: "4px 0 0", fontSize: "0.78em", color: "#9ca3af" }}>
+            Требует: <code style={{ background: "var(--surface-2)", padding: "1px 5px", borderRadius: 4 }}>{preset.envVar}</code>
+          </p>
+        </div>
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => onActivate(preset.provider, preset.model)}
+          disabled={isActive || isPending}
+        >
+          {isActive ? "Активна" : "Активировать"}
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontSize: "0.9em" }}>
+          <strong>Активная: </strong>
+          <code style={{ background: "var(--surface-2)", padding: "2px 8px", borderRadius: 4 }}>
+            {activeProvider}/{activeModel}
+          </code>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setShowCustom((v) => !v)}>
+          {showCustom ? "Скрыть" : "Ввести вручную"}
+        </button>
+      </div>
+
+      {showCustom && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
+          <input value={customProvider} onChange={(e) => setCustomProvider(e.target.value)} placeholder="provider" style={{ flex: 1 }} />
+          <input value={customModel} onChange={(e) => setCustomModel(e.target.value)} placeholder="model" style={{ flex: 1 }} />
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => customProvider && customModel && onActivate(customProvider, customModel)}
+            disabled={!customProvider || !customModel || isPending}
+          >
+            Активировать
+          </button>
+        </div>
+      )}
+
+      <p style={{ margin: "0 0 8px", fontSize: "0.8em", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Бесплатные</p>
+      {freePresets.map(renderPreset)}
+
+      <p style={{ margin: "16px 0 8px", fontSize: "0.8em", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Платные</p>
+      {paidPresets.map(renderPreset)}
+    </div>
+  );
+};
+
 type SttPreset = {
   name: string;
   provider: string;
@@ -1866,45 +2005,15 @@ const AdminModelsPage = () => {
         <p className="muted" style={{ fontSize: "0.85em", margin: "0 0 12px" }}>
           Используется для суммаризации, задач, спикеров и Q&A по встрече.
         </p>
-        {activePostprocessing && (
-          <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-              {[
-                { provider: "openai", model: "gpt-4o-mini", label: "OpenAI GPT-4o-mini", price: "$0.15/1M" },
-                { provider: "gemini", model: "gemini-2.0-flash", label: "Gemini 2.0 Flash", price: "~$0.10/1M" },
-                { provider: "mock", model: "-", label: "Mock (разработка)", price: "бесплатно" },
-              ].map((preset) => {
-                const isActive = activePostprocessing.provider === preset.provider;
-                return (
-                  <div key={preset.provider} className={`model-card${isActive ? " active" : ""}`} style={{ flex: "1 1 200px" }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 2 }}>
-                        <strong style={{ fontSize: "0.9em" }}>{preset.label}</strong>
-                        <span className="badge badge-free">{preset.price}</span>
-                        {isActive && <span className="badge badge-active">АКТИВНА</span>}
-                      </div>
-                    </div>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      disabled={isActive || update.isPending}
-                      onClick={() => update.mutate({ purpose: "postprocessing", provider: preset.provider, model: preset.model })}
-                    >
-                      {isActive ? "Активна" : "Активировать"}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <ModelConfigRow
-              title="Или задать вручную:"
-              model={activePostprocessing}
-              onSave={(provider, model) => {
-                if (window.confirm("Активировать выбранную модель постобработки?")) {
-                  update.mutate({ purpose: "postprocessing", provider, model });
-                }
-              }}
-            />
-          </>
+        {activePostprocessing ? (
+          <LlmPresetSelector
+            activeProvider={activePostprocessing.provider}
+            activeModel={activePostprocessing.model}
+            onActivate={handleActivate("postprocessing")}
+            isPending={update.isPending}
+          />
+        ) : (
+          models.isLoading ? <p className="muted">Загрузка...</p> : null
         )}
 
         {update.isError && <p className="error" style={{ marginTop: 12 }}>Не удалось обновить модель</p>}
