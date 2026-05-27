@@ -252,7 +252,22 @@ export const processMeetingRun = async (meetingId: string, runId: string): Promi
 
     await runStep(context, "speakers_identified", async () => {
       const speakerLabels = speakers.map((speaker) => speaker.autoLabel);
-      const response = await postProvider.suggestSpeakerNames(transcript.rawText, speakerLabels);
+
+      // Форматируем транскрипцию с метками спикеров, чтобы LLM мог сопоставить
+      // "Спикер 1"/"Спикер 2" с реальными именами по контексту разговора.
+      // Без этого LLM получает сплошной текст и угадывает наугад.
+      const speakerById = new Map(speakers.map((s) => [s.id, s.autoLabel]));
+      const labeledTranscript = transcript.segments.length > 0
+        ? transcript.segments
+            .map((seg) => {
+              const ts = new Date(seg.startSec * 1000).toISOString().substring(11, 19);
+              const label = seg.speakerId ? (speakerById.get(seg.speakerId) ?? "Спикер ?") : "Спикер ?";
+              return `[${ts}] ${label}: ${seg.text}`;
+            })
+            .join("\n")
+        : transcript.rawText;
+
+      const response = await postProvider.suggestSpeakerNames(labeledTranscript, speakerLabels);
 
       await prisma.$transaction(
         speakers.map((speaker) =>
