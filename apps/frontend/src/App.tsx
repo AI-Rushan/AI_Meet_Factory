@@ -1955,6 +1955,15 @@ const ModelConfigRow = ({
 
 const AdminModelsPage = () => {
   const queryClient = useQueryClient();
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (msg: string, ok: boolean) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ msg, ok });
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  };
+
   const models = useQuery({
     queryKey: ["admin-models"],
     queryFn: async () => (await api.get("/admin/models")).data,
@@ -1963,7 +1972,15 @@ const AdminModelsPage = () => {
   const update = useMutation({
     mutationFn: async (payload: { purpose: "transcription" | "postprocessing"; provider: string; model: string }) =>
       (await api.put(`/admin/models/${payload.purpose}`, { provider: payload.provider, model: payload.model })).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-models"] }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-models"] });
+      const label = vars.purpose === "transcription" ? "Транскрипция" : "Постобработка";
+      showToast(`✓ ${label}: ${vars.provider}/${vars.model} активирована`, true);
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error ?? err?.message ?? "Неизвестная ошибка";
+      showToast(`Ошибка: ${msg}`, false);
+    },
   });
 
   const activeTranscription = models.data?.find((item: any) => item.purpose === "transcription" && item.isActive);
@@ -1976,6 +1993,16 @@ const AdminModelsPage = () => {
 
   return (
     <AppShell>
+      {toast && (
+        <div style={{
+          position: "fixed", top: 20, right: 20, zIndex: 9999,
+          background: toast.ok ? "var(--success, #16a34a)" : "var(--error, #dc2626)",
+          color: "#fff", padding: "10px 18px", borderRadius: 8,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.18)", fontSize: "0.9em", maxWidth: 380,
+        }}>
+          {toast.msg}
+        </div>
+      )}
       <section className="card">
         <h2 style={{ margin: "0 0 20px" }}>Настройки ИИ</h2>
 
@@ -2015,9 +2042,6 @@ const AdminModelsPage = () => {
         ) : (
           models.isLoading ? <p className="muted">Загрузка...</p> : null
         )}
-
-        {update.isError && <p className="error" style={{ marginTop: 12 }}>Не удалось обновить модель</p>}
-        {update.isSuccess && <p style={{ color: "var(--success)", marginTop: 12 }}>✓ Модель обновлена</p>}
       </section>
     </AppShell>
   );
