@@ -1236,7 +1236,10 @@ const MeetingDetailsPage = () => {
     const url = URL.createObjectURL(response.data);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `meeting-${meetingId}.txt`;
+    const safeTitle = (meeting.data?.title ?? `meeting-${meetingId}`)
+      .replace(/[/\\:*?"<>|]/g, "-")
+      .trim();
+    link.download = `${safeTitle}.txt`;
     link.click();
     URL.revokeObjectURL(url);
   };
