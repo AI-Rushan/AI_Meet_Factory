@@ -17,6 +17,7 @@ import {
   Download,
   FileAudio,
   FileText,
+  HelpCircle,
   LayoutDashboard,
   LogOut,
   MessageCircle,
@@ -66,6 +67,7 @@ const AppShell = ({ children }: { children: ReactNode }) => {
         </div>
         <nav className="sidebar-nav">
           <SidebarLink to="/meetings" icon={<LayoutDashboard size={16} />} label="Встречи" />
+          <SidebarLink to="/help" icon={<HelpCircle size={16} />} label="Помощь" />
           {isAdmin && (
             <SidebarLink to="/admin/runs" icon={<FileText size={16} />} label="Журнал обработок" />
           )}
@@ -2221,6 +2223,102 @@ const AdminUsersPage = () => {
   );
 };
 
+// ── HelpPage ───────────────────────────────────────────────────────────────
+
+const HelpSection = ({ title, children }: { title: string; children: ReactNode }) => (
+  <div style={{ marginBottom: 28 }}>
+    <h3 style={{ margin: "0 0 10px", fontSize: "1em", fontWeight: 700 }}>{title}</h3>
+    {children}
+  </div>
+);
+
+const HelpPage = () => (
+  <AppShell>
+    <section className="card" style={{ maxWidth: 720 }}>
+      <h2 style={{ margin: "0 0 24px" }}>Инструкция по использованию</h2>
+
+      <HelpSection title="1. Регистрация и вход">
+        <p style={{ margin: 0, lineHeight: 1.7 }}>
+          Перейдите на сайт и нажмите <strong>«Зарегистрироваться»</strong> — введите email и пароль.
+          Если аккаунт уже есть, нажмите <strong>«Войти»</strong>.
+        </p>
+      </HelpSection>
+
+      <HelpSection title="2. Список встреч">
+        <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.8 }}>
+          <li>Сортировка по названию — кнопки <strong>А–Я</strong> / <strong>Я–А</strong></li>
+          <li>Удаление встречи — иконка корзины</li>
+          <li>Рекомендуется начинать название с даты: <code style={{ background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4 }}>27-05-2026 Встреча с клиентом</code> — это позволяет сортировать хронологически</li>
+        </ul>
+      </HelpSection>
+
+      <HelpSection title="3. Создание встречи">
+        <p style={{ margin: 0, lineHeight: 1.7 }}>
+          Нажмите <strong>«Новая встреча»</strong>, введите название, нажмите <strong>«Создать»</strong>.
+          После этого загрузите аудио или видеофайл.
+        </p>
+      </HelpSection>
+
+      <HelpSection title="4. Загрузка файла">
+        <p style={{ margin: "0 0 8px", lineHeight: 1.7 }}>
+          Откройте встречу и нажмите <strong>«Загрузить файл»</strong>. После загрузки начнётся автоматическая обработка (обычно 1–5 минут). Страница обновляется автоматически.
+        </p>
+        <p style={{ margin: 0, fontSize: "0.85em", color: "var(--muted)" }}>
+          Поддерживаемые форматы: MP3, WAV, M4A, MP4, WebM, OGG, FLAC, AAC
+        </p>
+      </HelpSection>
+
+      <HelpSection title="5. Вкладки встречи">
+        {[
+          {
+            name: "Транскрипция",
+            desc: "Полный текст с метками времени и именами спикеров. Можно искать по тексту, редактировать содержимое, переназначать спикеров и скачать файл .txt (сохраняется с именем встречи).",
+          },
+          {
+            name: "Спикеры",
+            desc: "Список участников, определённых ИИ. Можно подтвердить или исправить имя каждого спикера. Если кто-то не был определён автоматически — добавьте спикера вручную через форму внизу раздела.",
+          },
+          {
+            name: "Саммари",
+            desc: "Краткое содержание встречи: темы обсуждения и принятые решения. Нажмите «Получить саммари» для генерации.",
+          },
+          {
+            name: "Задачи",
+            desc: "Задачи, автоматически извлечённые из разговора. Генерируются вместе с саммари. Можно редактировать, указывать ответственного и срок, добавлять задачи вручную.",
+          },
+          {
+            name: "Чат",
+            desc: "Задайте любой вопрос по содержимому встречи. Например: «Что решили по бюджету?» или «Кто отвечает за маркетинг?»",
+          },
+          {
+            name: "Экспорт",
+            desc: "Отправка саммари и задач на Email или в Telegram. Для Telegram: найдите бота @ru_meetings_ai_mvp_bot, выполните /start, затем вернитесь в приложение.",
+          },
+        ].map(({ name, desc }) => (
+          <div key={name} style={{ marginBottom: 10 }}>
+            <strong>{name}</strong>
+            <p style={{ margin: "2px 0 0", fontSize: "0.9em", lineHeight: 1.6, color: "var(--muted)" }}>{desc}</p>
+          </div>
+        ))}
+      </HelpSection>
+
+      <HelpSection title="6. Частые вопросы">
+        {[
+          ["Встреча долго обрабатывается", "Страница обновляется автоматически — просто подождите."],
+          ["Спикеры определены неправильно", "Вкладка «Транскрипция» → кнопка «Редактировать» → исправьте вручную."],
+          ["Нужного спикера нет в списке", "Вкладка «Спикеры» → форма внизу → добавьте спикера вручную."],
+          ["Саммари на неправильном языке", "Саммари генерируется на языке аудиозаписи."],
+        ].map(([q, a]) => (
+          <div key={q} style={{ marginBottom: 10 }}>
+            <strong style={{ fontSize: "0.9em" }}>{q}</strong>
+            <p style={{ margin: "2px 0 0", fontSize: "0.88em", lineHeight: 1.6, color: "var(--muted)" }}>{a}</p>
+          </div>
+        ))}
+      </HelpSection>
+    </section>
+  </AppShell>
+);
+
 // ── Guard ──────────────────────────────────────────────────────────────────
 
 const Guard = ({ children }: { children: ReactNode }) => {
@@ -2238,6 +2336,7 @@ export const App = () => (
     <Route path="/register" element={<AuthPage mode="register" />} />
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     <Route path="/reset-password" element={<ResetPasswordPage />} />
+    <Route path="/help" element={<Guard><HelpPage /></Guard>} />
     <Route path="/meetings" element={<Guard><MeetingsPage /></Guard>} />
     <Route path="/meetings/:meetingId" element={<Guard><MeetingDetailsPage /></Guard>} />
     <Route path="/admin/runs" element={<Guard><AdminRunsPage /></Guard>} />
