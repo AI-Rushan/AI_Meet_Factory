@@ -53,6 +53,9 @@ const exportSchema = z.object({
 
 const allowedMimeTypes = new Set([
   "audio/mpeg",
+  "audio/mp3",
+  "audio/x-mp3",
+  "audio/mpeg3",
   "audio/wav",
   "audio/x-wav",
   "audio/mp4",
@@ -66,6 +69,12 @@ const allowedMimeTypes = new Set([
   "audio/flac",
   "audio/x-flac",
   "audio/aac",
+  "video/x-matroska",
+  "video/x-msvideo",
+  "video/avi",
+  "video/x-ms-wmv",
+  "video/3gpp",
+  "video/x-flv",
 ]);
 
 const storage = multer.diskStorage({

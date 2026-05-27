@@ -1320,7 +1320,11 @@ const MeetingDetailsPage = () => {
               </button>
               {isProcessing && <TranscribingAnimation />}
             </div>
-            {uploadMutation.isError && <p className="error" style={{ marginTop: 8 }}>Ошибка загрузки файла</p>}
+            {uploadMutation.isError && (
+              <p className="error" style={{ marginTop: 8 }}>
+                {(uploadMutation.error as any)?.response?.data?.error ?? (uploadMutation.error as any)?.message ?? "Ошибка загрузки файла"}
+              </p>
+            )}
           </section>
 
           {/* Вкладки */}
