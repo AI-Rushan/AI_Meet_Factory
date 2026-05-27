@@ -1442,7 +1442,16 @@ const MeetingDetailsPage = () => {
                     </button>
                   </div>
                   {target === "TELEGRAM" && (
-                    <TelegramRecipientPicker selected={selectedChats} onChange={setSelectedChats} />
+                    <>
+                      <p className="muted" style={{ fontSize: "0.85em", margin: "0 0 10px" }}>
+                        Чтобы получать сообщения от бота, перейдите в{" "}
+                        <a href="https://t.me/ru_meetings_ai_mvp_bot" target="_blank" rel="noreferrer">
+                          @ru_meetings_ai_mvp_bot
+                        </a>{" "}
+                        и выполните команду <strong>/start</strong>.
+                      </p>
+                      <TelegramRecipientPicker selected={selectedChats} onChange={setSelectedChats} />
+                    </>
                   )}
                   {exportMutation.isError && (
                     <p className="error" style={{ marginTop: 6 }}>
