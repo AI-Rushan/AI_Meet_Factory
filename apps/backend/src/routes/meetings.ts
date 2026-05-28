@@ -70,11 +70,18 @@ const allowedMimeTypes = new Set([
   "audio/x-flac",
   "audio/aac",
   "video/x-matroska",
+  "video/mkv",
   "video/x-msvideo",
   "video/avi",
   "video/x-ms-wmv",
   "video/3gpp",
   "video/x-flv",
+]);
+
+// Расширения, которые принимаем даже если браузер вернул application/octet-stream
+const allowedExtensions = new Set([
+  ".mp3", ".wav", ".m4a", ".mp4", ".webm", ".ogg", ".flac", ".aac",
+  ".mkv", ".avi", ".wmv", ".3gp", ".flv", ".mov",
 ]);
 
 const storage = multer.diskStorage({
@@ -86,11 +93,19 @@ const upload = multer({
   storage,
   limits: { fileSize: 1024 * 1024 * 700 },
   fileFilter: (_req, file, cb) => {
-    if (!allowedMimeTypes.has(file.mimetype)) {
-      cb(new Error(`Unsupported mime type: ${file.mimetype}`));
+    if (allowedMimeTypes.has(file.mimetype)) {
+      cb(null, true);
       return;
     }
-    cb(null, true);
+    // Некоторые браузеры/ОС отправляют application/octet-stream для видео-контейнеров (напр. MKV на macOS)
+    if (file.mimetype === "application/octet-stream") {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (allowedExtensions.has(ext)) {
+        cb(null, true);
+        return;
+      }
+    }
+    cb(new Error(`Unsupported file type: ${file.mimetype} (${file.originalname})`));
   },
 });
 
