@@ -362,15 +362,128 @@ adminRouter.patch("/users/:userId", async (req, res) => {
   }
 });
 
-// Удалить пользователя
+// Удалить пользователя — данные переносятся на архивариуса
 adminRouter.delete("/users/:userId", async (req, res) => {
+  const userId = req.params.userId;
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.membership.deleteMany({ where: { userId: req.params.userId } });
-      await tx.user.delete({ where: { id: req.params.userId } });
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user) throw new Error("NOT_FOUND");
+      if (user.isArchivist) throw new Error("CANNOT_DELETE_ARCHIVIST");
+
+      const archivist = await tx.user.findFirst({ where: { isArchivist: true } });
+      if (!archivist) throw new Error("NO_ARCHIVIST");
+
+      // Переносим встречи
+      await tx.meeting.updateMany({
+        where: { createdByUserId: userId },
+        data: { createdByUserId: archivist.id },
+      });
+
+      // Переносим личный workspace: меняем владельца и пересоздаём членство
+      const personalWorkspace = await tx.workspace.findFirst({
+        where: { personalOwnerUserId: userId },
+      });
+      if (personalWorkspace) {
+        await tx.workspace.update({
+          where: { id: personalWorkspace.id },
+          data: { personalOwnerUserId: archivist.id },
+        });
+        await tx.membership.deleteMany({ where: { workspaceId: personalWorkspace.id } });
+        await tx.membership.create({
+          data: { userId: archivist.id, workspaceId: personalWorkspace.id, role: MembershipRole.OWNER },
+        });
+      }
+
+      // Удаляем оставшиеся членства пользователя (в чужих workspace)
+      await tx.membership.deleteMany({ where: { userId } });
+      await tx.user.delete({ where: { id: userId } });
     });
     res.status(204).send();
-  } catch {
-    res.status(404).json({ error: "Пользователь не найден или не может быть удалён" });
+  } catch (err) {
+    if (err instanceof Error && err.message === "NOT_FOUND")
+      return res.status(404).json({ error: "Пользователь не найден" });
+    if (err instanceof Error && err.message === "CANNOT_DELETE_ARCHIVIST")
+      return res.status(403).json({ error: "Нельзя удалить архивариуса" });
+    if (err instanceof Error && err.message === "NO_ARCHIVIST")
+      return res.status(400).json({ error: "Сначала создайте аккаунт-архивариус" });
+    res.status(500).json({ error: "Не удалось удалить пользователя" });
   }
+});
+
+// ── Архивариус ─────────────────────────────────────────────────────────────
+
+// Получить или создать архивариуса
+adminRouter.post("/archivist/setup", async (req, res) => {
+  const existing = await prisma.user.findFirst({ where: { isArchivist: true } });
+  if (existing) {
+    return res.json({ id: existing.id, email: existing.email, name: existing.name });
+  }
+
+  const archivist = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        email: "archivist@system.internal",
+        name: "Архивариус",
+        passwordHash: "disabled",
+        emailVerified: true,
+        isArchivist: true,
+        isBlocked: true,
+      },
+    });
+    const workspace = await tx.workspace.create({
+      data: { name: "Archive", kind: WorkspaceKind.PERSONAL, personalOwnerUserId: user.id },
+    });
+    await tx.membership.create({
+      data: { userId: user.id, workspaceId: workspace.id, role: MembershipRole.OWNER },
+    });
+    return user;
+  });
+
+  res.status(201).json({ id: archivist.id, email: archivist.email, name: archivist.name });
+});
+
+// ── Workspace управление ───────────────────────────────────────────────────
+
+// Список всех workspace с владельцем (для переназначения)
+adminRouter.get("/workspaces", async (_req, res) => {
+  const archivist = await prisma.user.findFirst({ where: { isArchivist: true } });
+
+  const workspaces = await prisma.workspace.findMany({
+    where: archivist ? { personalOwnerUserId: archivist.id } : { personalOwnerUserId: null },
+    include: {
+      personalOwner: { select: { id: true, email: true, name: true, isArchivist: true } },
+      _count: { select: { meetings: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  res.json(workspaces);
+});
+
+// Переназначить workspace другому пользователю
+adminRouter.post("/workspaces/:workspaceId/transfer", async (req, res) => {
+  const { targetUserId } = z.object({ targetUserId: z.string().min(1) }).parse(req.body);
+
+  const [workspace, targetUser] = await Promise.all([
+    prisma.workspace.findUnique({ where: { id: req.params.workspaceId } }),
+    prisma.user.findUnique({ where: { id: targetUserId } }),
+  ]);
+
+  if (!workspace) return res.status(404).json({ error: "Workspace не найден" });
+  if (!targetUser) return res.status(404).json({ error: "Пользователь не найден" });
+  if (targetUser.isArchivist) return res.status(400).json({ error: "Нельзя назначить архивариуса владельцем" });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.workspace.update({
+      where: { id: workspace.id },
+      data: { personalOwnerUserId: targetUser.id },
+    });
+    await tx.membership.deleteMany({ where: { workspaceId: workspace.id } });
+    await tx.membership.create({
+      data: { userId: targetUser.id, workspaceId: workspace.id, role: MembershipRole.OWNER },
+    });
+  });
+
+  res.json({ ok: true });
 });

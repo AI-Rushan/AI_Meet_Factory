@@ -17,6 +17,7 @@ import {
   Download,
   FileAudio,
   FileText,
+  FolderOpen,
   HelpCircle,
   LayoutDashboard,
   LogOut,
@@ -76,6 +77,9 @@ const AppShell = ({ children }: { children: ReactNode }) => {
           )}
           {isAdmin && (
             <SidebarLink to="/admin/users" icon={<Users size={16} />} label="Пользователи" />
+          )}
+          {isAdmin && (
+            <SidebarLink to="/admin/archive" icon={<FolderOpen size={16} />} label="Архив" />
           )}
         </nav>
         <div className="sidebar-footer">
@@ -2566,6 +2570,117 @@ const VerifyEmailPage = () => {
   );
 };
 
+// ── AdminArchivePage ──────────────────────────────────────────────────────
+
+const AdminArchivePage = () => {
+  const queryClient = useQueryClient();
+  const [transferUserId, setTransferUserId] = useState<Record<string, string>>({});
+
+  const archivist = useQuery({
+    queryKey: ["archivist"],
+    queryFn: async () => (await api.get("/admin/archivist/setup").catch(() => null))?.data ?? null,
+    retry: false,
+  });
+
+  const setupArchivist = useMutation({
+    mutationFn: async () => (await api.post("/admin/archivist/setup")).data,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["archivist", "archive-workspaces"] }),
+  });
+
+  const workspaces = useQuery({
+    queryKey: ["archive-workspaces"],
+    queryFn: async () => (await api.get("/admin/workspaces")).data,
+    enabled: !!archivist.data,
+  });
+
+  const users = useQuery({
+    queryKey: ["admin-users-list"],
+    queryFn: async () => (await api.get("/admin/users")).data,
+  });
+
+  const transfer = useMutation({
+    mutationFn: async ({ workspaceId, targetUserId }: { workspaceId: string; targetUserId: string }) =>
+      api.post(`/admin/workspaces/${workspaceId}/transfer`, { targetUserId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["archive-workspaces"] }),
+  });
+
+  const nonArchivistUsers = (users.data ?? []).filter((u: any) => !u.isArchivist);
+
+  return (
+    <AppShell>
+      <section className="card">
+        <h2 style={{ margin: "0 0 16px" }}>Архивариус</h2>
+        {!archivist.data ? (
+          <div>
+            <p style={{ margin: "0 0 12px", color: "var(--muted)", fontSize: "0.9em", lineHeight: 1.6 }}>
+              Аккаунт-архивариус не создан. Он нужен для хранения данных удалённых пользователей.
+            </p>
+            <button
+              className="btn btn-primary"
+              onClick={() => setupArchivist.mutate()}
+              disabled={setupArchivist.isPending}
+            >
+              {setupArchivist.isPending ? "Создание..." : "Создать архивариуса"}
+            </button>
+            {setupArchivist.isError && <p className="error" style={{ marginTop: 8 }}>Не удалось создать архивариуса</p>}
+          </div>
+        ) : (
+          <p style={{ margin: 0, fontSize: "0.9em" }}>
+            Активен: <strong>{archivist.data.email}</strong> — данные удалённых пользователей хранятся здесь.
+          </p>
+        )}
+      </section>
+
+      {archivist.data && (
+        <section className="card">
+          <h2 style={{ margin: "0 0 4px" }}>Workspace-сироты</h2>
+          <p style={{ margin: "0 0 16px", color: "var(--muted)", fontSize: "0.85em" }}>
+            Workspace удалённых пользователей. Переназначьте владельца, чтобы передать доступ.
+          </p>
+
+          {workspaces.isLoading && <p className="muted">Загрузка...</p>}
+          {!workspaces.isLoading && workspaces.data?.length === 0 && (
+            <p className="muted">Нет workspace-сирот.</p>
+          )}
+
+          {workspaces.data?.map((ws: any) => (
+            <div key={ws.id} style={{ borderBottom: "1px solid var(--line)", padding: "12px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <FolderOpen size={15} color="var(--accent)" />
+                  <strong style={{ fontSize: "0.95em" }}>{ws.name}</strong>
+                  <span className="muted" style={{ fontSize: "0.8em" }}>· встреч: {ws._count.meetings}</span>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <select
+                  title="Выберите пользователя для передачи workspace"
+                  value={transferUserId[ws.id] ?? ""}
+                  onChange={(e) => setTransferUserId((prev) => ({ ...prev, [ws.id]: e.target.value }))}
+                  style={{ fontSize: "0.85em" }}
+                >
+                  <option value="">— выберите пользователя —</option>
+                  {nonArchivistUsers.map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.email}{u.name ? ` (${u.name})` : ""}</option>
+                  ))}
+                </select>
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={!transferUserId[ws.id] || transfer.isPending}
+                  onClick={() => transfer.mutate({ workspaceId: ws.id, targetUserId: transferUserId[ws.id] })}
+                >
+                  Передать
+                </button>
+              </div>
+            </div>
+          ))}
+          {transfer.isError && <p className="error" style={{ marginTop: 8 }}>Не удалось переназначить workspace</p>}
+        </section>
+      )}
+    </AppShell>
+  );
+};
+
 // ── Guard ──────────────────────────────────────────────────────────────────
 
 const Guard = ({ children }: { children: ReactNode }) => {
@@ -2593,6 +2708,7 @@ export const App = () => (
     <Route path="/admin/runs/:runId" element={<Guard><AdminRunDetailsPage /></Guard>} />
     <Route path="/admin/models" element={<Guard><AdminModelsPage /></Guard>} />
     <Route path="/admin/users" element={<Guard><AdminUsersPage /></Guard>} />
+    <Route path="/admin/archive" element={<Guard><AdminArchivePage /></Guard>} />
     <Route path="*" element={<Navigate to="/meetings" replace />} />
   </Routes>
 );
