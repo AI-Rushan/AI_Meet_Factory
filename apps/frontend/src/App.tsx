@@ -2651,6 +2651,11 @@ const AdminArchivePage = () => {
                   <strong style={{ fontSize: "0.95em" }}>{ws.name}</strong>
                   <span className="muted" style={{ fontSize: "0.8em" }}>· встреч: {ws._count.meetings}</span>
                 </div>
+                {ws.originalOwnerEmail && (
+                  <p style={{ margin: "2px 0 0", fontSize: "0.8em", color: "var(--muted)" }}>
+                    Создан: {ws.originalOwnerEmail}
+                  </p>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <select

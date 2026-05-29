@@ -111,6 +111,7 @@ model Workspace {
   name                String
   kind                WorkspaceKind @default(PERSONAL)
   personalOwnerUserId String?      @unique
+  originalOwnerEmail  String?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
   memberships         Membership[]
