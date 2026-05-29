@@ -459,7 +459,7 @@ adminRouter.delete("/users/:userId", async (req, res) => {
       if (personalWorkspace) {
         await tx.workspace.update({
           where: { id: personalWorkspace.id },
-          data: { personalOwnerUserId: archivist.id, originalOwnerEmail: user.email },
+          data: { personalOwnerUserId: null, originalOwnerEmail: user.email },
         });
         await tx.membership.deleteMany({ where: { workspaceId: personalWorkspace.id } });
         await tx.membership.create({
@@ -522,7 +522,7 @@ adminRouter.get("/workspaces", async (_req, res) => {
   const archivist = await prisma.user.findFirst({ where: { isArchivist: true } });
 
   const workspaces = await prisma.workspace.findMany({
-    where: archivist ? { personalOwnerUserId: archivist.id } : { personalOwnerUserId: null },
+    where: { personalOwnerUserId: null, originalOwnerEmail: { not: null } },
     select: {
       id: true,
       name: true,
