@@ -2141,6 +2141,57 @@ const AdminModelsPage = () => {
 
 // ── Admin Users ────────────────────────────────────────────────────────────
 
+const UserMenu = ({
+  user,
+  onEdit,
+  onDelete,
+}: {
+  user: any;
+  onEdit: () => void;
+  onDelete: () => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        className="btn btn-ghost btn-sm"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        title="Действия"
+        style={{ padding: "4px 8px" }}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <div className="dropdown-menu">
+          <button
+            className="dropdown-item"
+            onClick={() => { setOpen(false); onEdit(); }}
+          >
+            Редактировать
+          </button>
+          <button
+            className="dropdown-item danger"
+            onClick={() => { setOpen(false); onDelete(); }}
+          >
+            <Trash2 size={14} /> Удалить
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AdminUsersPage = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -2286,30 +2337,15 @@ const AdminUsersPage = () => {
                     {" · "}встречи: {user._count.createdMeetings}
                   </p>
                 </div>
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                  <button className="btn btn-secondary btn-sm" onClick={() => startEdit(user)}>Редактировать</button>
-                  <button
-                    className={`btn btn-sm ${user.isBlocked ? "btn-secondary" : "btn-danger"}`}
-                    onClick={() => {
-                      api.patch(`/admin/users/${user.id}`, { isBlocked: !user.isBlocked })
-                        .then(() => queryClient.invalidateQueries({ queryKey: ["admin-users"] }));
-                    }}
-                    title={user.isBlocked ? "Разблокировать" : "Заблокировать"}
-                  >
-                    {user.isBlocked ? "Разблокировать" : "Заблокировать"}
-                  </button>
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={() => {
-                      if (window.confirm(`Удалить пользователя ${user.email}? Это действие нельзя отменить.`)) {
-                        deleteUser.mutate(user.id);
-                      }
-                    }}
-                    disabled={deleteUser.isPending}
-                  >
-                    Удалить
-                  </button>
-                </div>
+                <UserMenu
+                  user={user}
+                  onEdit={() => startEdit(user)}
+                  onDelete={() => {
+                    if (window.confirm(`Удалить пользователя ${user.email}? Это действие нельзя отменить.`)) {
+                      deleteUser.mutate(user.id);
+                    }
+                  }}
+                />
               </div>
             )}
           </div>
