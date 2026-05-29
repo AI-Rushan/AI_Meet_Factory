@@ -89,6 +89,9 @@ const AppShell = ({ children }: { children: ReactNode }) => {
           {isAdmin && (
             <SidebarLink to="/admin/archive" icon={<FolderOpen size={16} />} label="Архив" />
           )}
+          {isAdmin && (
+            <SidebarLink to="/admin/guide" icon={<BookOpen size={16} />} label="Инструкция" />
+          )}
         </nav>
         <div className="sidebar-footer">
           <button
@@ -3053,6 +3056,220 @@ const AdminArchivePage = () => {
   );
 };
 
+// ── AdminGuidePage ────────────────────────────────────────────────────────
+
+const AdminGuideSection = ({ title, children }: { title: string; children: ReactNode }) => (
+  <div style={{ marginBottom: 32 }}>
+    <h3 style={{ margin: "0 0 12px", fontSize: "1em", fontWeight: 700, borderBottom: "1px solid var(--line)", paddingBottom: 6 }}>{title}</h3>
+    {children}
+  </div>
+);
+
+const GuideTable = ({ headers, rows }: { headers: string[]; rows: string[][] }) => (
+  <div style={{ overflowX: "auto", marginBottom: 12 }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85em" }}>
+      <thead>
+        <tr>
+          {headers.map((h) => (
+            <th key={h} style={{ textAlign: "left", padding: "6px 10px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr key={i} style={{ borderBottom: "1px solid var(--line)" }}>
+            {row.map((cell, j) => (
+              <td key={j} style={{ padding: "6px 10px", verticalAlign: "top", lineHeight: 1.5 }}>{cell}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+const GuideScenario = ({ title, steps }: { title: string; steps: string[] }) => (
+  <div style={{ marginBottom: 16, padding: "12px 16px", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", borderLeft: "3px solid var(--accent)" }}>
+    <p style={{ margin: "0 0 8px", fontWeight: 600, fontSize: "0.9em" }}>{title}</p>
+    <ol style={{ margin: 0, paddingLeft: 20, fontSize: "0.88em", lineHeight: 1.8 }}>
+      {steps.map((step, i) => <li key={i}>{step}</li>)}
+    </ol>
+  </div>
+);
+
+const AdminGuidePage = () => (
+  <AppShell>
+    <section className="card" style={{ maxWidth: 860 }}>
+      <h2 style={{ margin: "0 0 6px" }}>Инструкция администратора</h2>
+      <p style={{ margin: "0 0 28px", color: "var(--muted)", fontSize: "0.85em" }}>AI Meet Factory · актуально на 2026-05-30</p>
+
+      <AdminGuideSection title="1. Дашборд  /admin/dashboard">
+        <p style={{ margin: "0 0 10px", fontSize: "0.88em", lineHeight: 1.6 }}>Главный экран — аналитика по всем пользователям. Обновляется каждую минуту. Кликните на заголовок колонки для сортировки.</p>
+        <GuideTable
+          headers={["Карточка / Колонка", "Что показывает"]}
+          rows={[
+            ["Пользователей", "Общее количество аккаунтов (без архивариуса)"],
+            ["Встреч обработано", "Число успешно завершённых транскрибаций за всё время"],
+            ["Стоимость AI", "Суммарная себестоимость API-запросов в $ (внутренняя аналитика)"],
+            ["Оплачено подписок", "Суммарная сумма успешных платежей в ₽"],
+            ["Дней", "Дней с момента регистрации по сегодня"],
+            ["Сессий", "Сколько раз пользователь входил в продукт"],
+            ["Последняя активность", "Дата и время последнего действия"],
+            ["Подписка", "Текущий тариф и дата окончания"],
+            ["Часов аудио", "Суммарная длительность загруженных файлов"],
+          ]}
+        />
+      </AdminGuideSection>
+
+      <AdminGuideSection title="2. Пользователи  /admin/users">
+        <p style={{ margin: "0 0 10px", fontSize: "0.88em", lineHeight: 1.6 }}>
+          Управление аккаунтами: создание, редактирование, блокировка, удаление. Используйте строку поиска для фильтрации по email или имени.
+        </p>
+        <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+          {[
+            ["Создать пользователя", "Кнопка «+ Добавить» → заполнить email, пароль, имя, чекбокс Admin. Пользователь сразу может войти — подтверждение email не требуется."],
+            ["Редактировать", "⋯ → Редактировать → изменить email / имя / права / пароль / блокировку → Сохранить."],
+            ["Заблокировать / разблокировать", "⋯ → Заблокировать (или Разблокировать). Заблокированный пользователь видит ошибку при входе."],
+            ["Удалить", "⋯ → Удалить → подтвердить. Встречи сохраняются и переходят к архивариусу."],
+          ].map(([action, desc]) => (
+            <div key={action} style={{ fontSize: "0.88em", lineHeight: 1.6 }}>
+              <strong>{action}:</strong> {desc}
+            </div>
+          ))}
+        </div>
+        <p style={{ margin: 0, fontSize: "0.82em", color: "var(--muted)", lineHeight: 1.5 }}>
+          ⚠ Перед первым удалением пользователя необходимо создать архивариуса в разделе «Архив».
+        </p>
+      </AdminGuideSection>
+
+      <AdminGuideSection title="3. Подписки  /admin/subscriptions">
+        <p style={{ margin: "0 0 10px", fontSize: "0.88em", lineHeight: 1.6 }}>Выберите пользователя из списка → «+ Назначить подписку» → заполните форму.</p>
+        <GuideTable
+          headers={["Поле", "Описание"]}
+          rows={[
+            ["Тариф", "Бесплатный / Стартер 490 ₽ / Про 990 ₽"],
+            ["Статус", "Активна / Пробный / Бесплатный"],
+            ["Период", "Месяц / Год (не обязателен для бесплатного)"],
+            ["Действует до", "Дата окончания подписки"],
+            ["Сумма платежа", "Укажите если был получен платёж (₽)"],
+            ["Комментарий", "Внутренняя заметка, не видна пользователю"],
+          ]}
+        />
+        <GuideTable
+          headers={["Статус", "Описание"]}
+          rows={[
+            ["🟢 Бесплатный", "Бесплатный тариф без ограничения по времени"],
+            ["🟢 Активна", "Оплаченная подписка действует"],
+            ["🔵 Пробный", "Временный бесплатный доступ"],
+            ["🟡 Льготный период", "Подписка истекла, данные доступны ещё 14 дней (только чтение)"],
+            ["🔴 Истекла / Отменена", "Доступ закрыт"],
+          ]}
+        />
+      </AdminGuideSection>
+
+      <AdminGuideSection title="4. Архив  /admin/archive">
+        <p style={{ margin: "0 0 10px", fontSize: "0.88em", lineHeight: 1.6 }}>
+          Архивариус — системный аккаунт, который хранит данные удалённых пользователей. Создаётся <strong>один раз</strong> при первом открытии раздела.
+        </p>
+        <div style={{ marginBottom: 12, fontSize: "0.88em", lineHeight: 1.6 }}>
+          <strong>Передать встречи удалённого пользователя:</strong> найдите workspace в списке «Workspace-сироты» → выберите нового владельца → «Передать». Встречи сразу появятся в списке встреч выбранного пользователя.
+        </div>
+      </AdminGuideSection>
+
+      <AdminGuideSection title="5. Журнал обработок  /admin/runs">
+        <p style={{ margin: "0 0 10px", fontSize: "0.88em", lineHeight: 1.6 }}>История всех транскрибаций. Фильтры: статус, email пользователя, период, наличие ошибок. Список обновляется каждые 5 секунд.</p>
+        <GuideTable
+          headers={["Статус", "Описание"]}
+          rows={[
+            ["pending", "В очереди — ожидает worker"],
+            ["running", "Обрабатывается прямо сейчас"],
+            ["completed", "Завершён успешно"],
+            ["failed", "Критическая ошибка"],
+            ["partial_failed", "Часть шагов завершилась с ошибкой"],
+          ]}
+        />
+        <p style={{ margin: 0, fontSize: "0.82em", color: "var(--muted)" }}>
+          Кнопка «Детали» → просмотр шагов, стоимости, кода ошибки. Кнопка «Перезапустить» → создаёт новый запуск.
+        </p>
+      </AdminGuideSection>
+
+      <AdminGuideSection title="6. Настройки AI-моделей  /admin/models">
+        <p style={{ margin: "0 0 10px", fontSize: "0.88em", lineHeight: 1.6 }}>Переключение провайдеров без изменения кода. Нажмите «Активировать» на нужной карточке.</p>
+        <GuideTable
+          headers={["Провайдер", "Стоимость", "Диаризация"]}
+          rows={[
+            ["Groq (Whisper)", "Бесплатно (лимит 7200 с/час)", "Нет"],
+            ["Gladia", "Бесплатно 10 ч/мес", "Да"],
+            ["Deepgram", "$0.0059/мин", "Да"],
+            ["AssemblyAI", "$0.0062/мин", "Да"],
+            ["OpenAI Whisper", "$0.006/мин", "Нет"],
+            ["Gemini Flash", "~$0.10/1M токенов", "Да"],
+            ["Mock", "Бесплатно (разработка)", "Нет"],
+          ]}
+        />
+        <p style={{ margin: "0", fontSize: "0.82em", color: "var(--muted)" }}>
+          <strong>Рекомендация для старта:</strong> транскрипция — Groq, постобработка — Groq (бесплатно, хорошее качество на русском).
+        </p>
+      </AdminGuideSection>
+
+      <AdminGuideSection title="7. Типовые сценарии">
+        <GuideScenario
+          title="Сотрудник уволился — передать встречи коллеге"
+          steps={[
+            "Пользователи → найти сотрудника → ⋯ → Удалить",
+            "Архив → найти workspace удалённого → выбрать нового владельца → Передать",
+            "Новый сотрудник увидит все встречи в своём списке",
+          ]}
+        />
+        <GuideScenario
+          title="Назначить пробный период"
+          steps={[
+            "Подписки → выбрать пользователя → Назначить подписку",
+            "Тариф: нужный план · Статус: Пробный · указать дату окончания",
+            "Нажать «Назначить подписку» (без записи платежа)",
+          ]}
+        />
+        <GuideScenario
+          title="Зафиксировать оплату подписки"
+          steps={[
+            "Подписки → выбрать пользователя → Назначить подписку",
+            "Тариф: нужный план · Статус: Активна · Период · Дата окончания",
+            "В блоке «Платёж» указать сумму и примечание (например: «Сбербанк»)",
+            "Нажать «Назначить подписку»",
+          ]}
+        />
+        <GuideScenario
+          title="Транскрибация зависла или упала с ошибкой"
+          steps={[
+            "Журнал обработок → найти запуск (фильтр по email пользователя)",
+            "Если статус pending долгое время — worker не запущен, обратитесь к разработчику",
+            "Если статус failed — Детали → посмотреть код ошибки → Перезапустить",
+          ]}
+        />
+        <GuideScenario
+          title="Переключить AI-модель на более дешёвую"
+          steps={[
+            "Настройки ИИ → выбрать карточку нужного провайдера → Активировать",
+            "Все новые транскрибации будут использовать новую модель",
+            "Уже созданные встречи не затрагиваются",
+          ]}
+        />
+      </AdminGuideSection>
+
+      <AdminGuideSection title="8. Справочник тарифов">
+        <GuideTable
+          headers={["Тариф", "Цена", "Минут/мес", "Встреч/мес", "Хранение", "Льготный период"]}
+          rows={[
+            ["Бесплатный", "0 ₽", "60 мин", "5", "90 дней", "нет"],
+            ["Стартер", "490 ₽/мес · 4 900 ₽/год", "300 мин (5 ч)", "20", "180 дней", "14 дней"],
+            ["Про", "990 ₽/мес · 9 900 ₽/год", "Без лимита", "Без лимита", "365 дней", "14 дней"],
+          ]}
+        />
+      </AdminGuideSection>
+    </section>
+  </AppShell>
+);
+
 // ── Guard ──────────────────────────────────────────────────────────────────
 
 const Guard = ({ children }: { children: ReactNode }) => {
@@ -3083,6 +3300,7 @@ export const App = () => (
     <Route path="/admin/users" element={<Guard><AdminUsersPage /></Guard>} />
     <Route path="/admin/subscriptions" element={<Guard><AdminSubscriptionsPage /></Guard>} />
     <Route path="/admin/archive" element={<Guard><AdminArchivePage /></Guard>} />
+    <Route path="/admin/guide" element={<Guard><AdminGuidePage /></Guard>} />
     <Route path="*" element={<Navigate to="/meetings" replace />} />
   </Routes>
 );
