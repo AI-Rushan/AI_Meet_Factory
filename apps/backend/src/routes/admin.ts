@@ -485,7 +485,14 @@ adminRouter.delete("/users/:userId", async (req, res) => {
 
 // ── Архивариус ─────────────────────────────────────────────────────────────
 
-// Получить или создать архивариуса
+// Получить архивариуса (для проверки существования)
+adminRouter.get("/archivist/setup", async (_req, res) => {
+  const archivist = await prisma.user.findFirst({ where: { isArchivist: true } });
+  if (!archivist) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ id: archivist.id, email: archivist.email, name: archivist.name });
+});
+
+// Создать архивариуса
 adminRouter.post("/archivist/setup", async (req, res) => {
   const existing = await prisma.user.findFirst({ where: { isArchivist: true } });
   if (existing) {
