@@ -292,6 +292,7 @@ adminRouter.post("/users", async (req, res) => {
         name: parsed.data.name ?? null,
         isAdmin: parsed.data.isAdmin,
         passwordHash: await hashPassword(parsed.data.password),
+        emailVerified: true,
       },
     });
 

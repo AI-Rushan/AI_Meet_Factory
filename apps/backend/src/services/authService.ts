@@ -181,7 +181,13 @@ export const authService = {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { emailVerified: true, emailVerifyToken: null, emailVerifyExpires: null },
+      data: {
+        emailVerified: true,
+        emailVerifyToken: null,
+        emailVerifyExpires: null,
+        loginCount: { increment: 1 },
+        lastActiveAt: new Date(),
+      },
     });
 
     const workspaceId = pickActiveWorkspaceId(user.memberships);
