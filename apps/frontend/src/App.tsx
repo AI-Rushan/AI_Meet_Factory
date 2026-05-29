@@ -17,6 +17,7 @@ import {
   Download,
   FileAudio,
   FileText,
+  Activity,
   CreditCard,
   FolderOpen,
   HelpCircle,
@@ -70,6 +71,9 @@ const AppShell = ({ children }: { children: ReactNode }) => {
         <nav className="sidebar-nav">
           <SidebarLink to="/meetings" icon={<LayoutDashboard size={16} />} label="Встречи" />
           <SidebarLink to="/help" icon={<HelpCircle size={16} />} label="Помощь" />
+          {isAdmin && (
+            <SidebarLink to="/admin/dashboard" icon={<Activity size={16} />} label="Дашборд" />
+          )}
           {isAdmin && (
             <SidebarLink to="/admin/runs" icon={<FileText size={16} />} label="Журнал обработок" />
           )}
@@ -1561,6 +1565,142 @@ const MeetingDetailsPage = () => {
 
 // ── Admin pages ────────────────────────────────────────────────────────────
 
+const SUB_STATUS_LABEL: Record<string, string> = {
+  free: "Бесплатный", trial: "Пробный", active: "Активна",
+  grace: "Льготный", canceled: "Отменена", expired: "Истекла",
+};
+const SUB_STATUS_CLASS: Record<string, string> = {
+  free: "badge-created", trial: "badge-processing", active: "badge-ready",
+  grace: "badge-processing", canceled: "badge-failed", expired: "badge-failed",
+};
+
+const DashCard = ({ label, value, sub }: { label: string; value: string | number; sub?: string }) => (
+  <div className="card" style={{ flex: 1, minWidth: 160, textAlign: "center", padding: "18px 16px" }}>
+    <p style={{ margin: "0 0 4px", fontSize: "0.78em", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</p>
+    <p style={{ margin: 0, fontSize: "1.6em", fontWeight: 700 }}>{value}</p>
+    {sub && <p style={{ margin: "2px 0 0", fontSize: "0.75em", color: "var(--muted)" }}>{sub}</p>}
+  </div>
+);
+
+const AdminDashboardPage = () => {
+  const [sortCol, setSortCol] = useState<string>("createdAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const dashboard = useQuery({
+    queryKey: ["admin-dashboard"],
+    queryFn: async () => (await api.get("/admin/dashboard")).data,
+    refetchInterval: 60_000,
+  });
+
+  const toggleSort = (col: string) => {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("desc"); }
+  };
+
+  const sorted = useMemo(() => {
+    if (!dashboard.data?.users) return [];
+    return [...dashboard.data.users].sort((a: any, b: any) => {
+      const av = a[sortCol] ?? 0;
+      const bv = b[sortCol] ?? 0;
+      const cmp = typeof av === "string" ? av.localeCompare(bv, "ru") : av - bv;
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [dashboard.data, sortCol, sortDir]);
+
+  const t = dashboard.data?.totals;
+
+  const Th = ({ col, label }: { col: string; label: string }) => (
+    <th
+      onClick={() => toggleSort(col)}
+      style={{ cursor: "pointer", whiteSpace: "nowrap", userSelect: "none", padding: "6px 10px", fontSize: "0.75em", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)", borderBottom: "1px solid var(--line)" }}
+    >
+      {label}{sortCol === col ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+    </th>
+  );
+
+  return (
+    <AppShell>
+      {/* Карточки-итоги */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 0 }}>
+        <DashCard label="Пользователей" value={t?.totalUsers ?? "—"} />
+        <DashCard label="Встреч обработано" value={t?.totalMeetingsProcessed ?? "—"} />
+        <DashCard label="Стоимость AI" value={t ? `$${t.totalAiCostUsd}` : "—"} sub="себестоимость" />
+        <DashCard label="Оплачено подписок" value={t ? `${t.totalPaidRub.toLocaleString("ru")} ₽` : "—"} />
+      </div>
+
+      {/* Таблица пользователей */}
+      <section className="card" style={{ overflowX: "auto" }}>
+        <h2 style={{ margin: "0 0 14px", fontSize: "1.05em" }}>Аналитика по пользователям</h2>
+
+        {dashboard.isLoading && <p className="muted">Загрузка...</p>}
+        {dashboard.isError && <p className="error">Не удалось загрузить данные</p>}
+
+        {sorted.length > 0 && (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85em" }}>
+            <thead>
+              <tr>
+                <Th col="email" label="Пользователь" />
+                <Th col="createdAt" label="Зарегистрирован" />
+                <Th col="daysSinceReg" label="Дней" />
+                <Th col="loginCount" label="Сессий" />
+                <Th col="lastActiveAt" label="Последняя активность" />
+                <th style={{ padding: "6px 10px", fontSize: "0.75em", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)", borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" }}>Подписка</th>
+                <Th col="meetingsProcessed" label="Встреч" />
+                <Th col="audioHours" label="Часов аудио" />
+                <Th col="aiCostUsd" label="AI, $" />
+                <Th col="paidRub" label="Оплачено, ₽" />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((u: any) => (
+                <tr key={u.id} style={{ borderBottom: "1px solid var(--line)" }}>
+                  <td style={{ padding: "8px 10px" }}>
+                    <p style={{ margin: 0, fontWeight: 600 }}>{u.email}</p>
+                    {u.name && <p style={{ margin: 0, fontSize: "0.82em", color: "var(--muted)" }}>{u.name}</p>}
+                    <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
+                      {u.isAdmin && <span className="badge badge-admin" style={{ fontSize: "0.7em" }}>ADMIN</span>}
+                      {u.isBlocked && <span className="badge badge-failed" style={{ fontSize: "0.7em" }}>БЛОК</span>}
+                    </div>
+                  </td>
+                  <td style={{ padding: "8px 10px", whiteSpace: "nowrap", color: "var(--muted)" }}>
+                    {new Date(u.createdAt).toLocaleDateString("ru")}
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "center" }}>{u.daysSinceReg}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "center" }}>{u.loginCount}</td>
+                  <td style={{ padding: "8px 10px", whiteSpace: "nowrap", color: "var(--muted)", fontSize: "0.82em" }}>
+                    {u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString("ru") : "—"}
+                  </td>
+                  <td style={{ padding: "8px 10px", whiteSpace: "nowrap" }}>
+                    {u.subscription ? (
+                      <div>
+                        <span className={`badge ${SUB_STATUS_CLASS[u.subscription.status] ?? "badge-created"}`}>
+                          {SUB_STATUS_LABEL[u.subscription.status] ?? u.subscription.status}
+                        </span>
+                        <p style={{ margin: "2px 0 0", fontSize: "0.8em", color: "var(--muted)" }}>
+                          {u.subscription.planName}
+                          {u.subscription.expiresAt && ` · до ${new Date(u.subscription.expiresAt).toLocaleDateString("ru")}`}
+                        </p>
+                      </div>
+                    ) : <span style={{ color: "var(--muted)" }}>—</span>}
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "center" }}>{u.meetingsProcessed}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "center" }}>{u.audioHours}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                    {u.aiCostUsd > 0 ? `$${u.aiCostUsd}` : "—"}
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "center" }}>
+                    {u.paidRub > 0 ? `${u.paidRub.toLocaleString("ru")} ₽` : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </AppShell>
+  );
+};
+
 const AdminRunsPage = () => {
   const [status, setStatus] = useState("");
   const [userId, setUserId] = useState("");
@@ -2936,6 +3076,7 @@ export const App = () => (
     <Route path="/help" element={<Guard><HelpPage /></Guard>} />
     <Route path="/meetings" element={<Guard><MeetingsPage /></Guard>} />
     <Route path="/meetings/:meetingId" element={<Guard><MeetingDetailsPage /></Guard>} />
+    <Route path="/admin/dashboard" element={<Guard><AdminDashboardPage /></Guard>} />
     <Route path="/admin/runs" element={<Guard><AdminRunsPage /></Guard>} />
     <Route path="/admin/runs/:runId" element={<Guard><AdminRunDetailsPage /></Guard>} />
     <Route path="/admin/models" element={<Guard><AdminModelsPage /></Guard>} />

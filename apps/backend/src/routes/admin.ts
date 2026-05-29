@@ -41,6 +41,77 @@ export const adminRouter = Router();
 
 adminRouter.use(adminRequired);
 
+// ── Дашборд ────────────────────────────────────────────────────────────────
+
+adminRouter.get("/dashboard", async (_req, res) => {
+  const [users, runStats, meetingStats, paymentStats, activeSubscriptions] = await Promise.all([
+    prisma.user.findMany({
+      where: { isArchivist: false },
+      select: {
+        id: true, email: true, name: true, isAdmin: true, isBlocked: true,
+        accountType: true, loginCount: true, lastActiveAt: true, createdAt: true,
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.meetingProcessingRun.groupBy({
+      by: ["userId"],
+      where: { status: "completed" },
+      _sum: { totalCost: true },
+      _count: { _all: true },
+    }),
+    prisma.meeting.groupBy({
+      by: ["createdByUserId"],
+      _sum: { sourceDurationSec: true },
+      _count: { _all: true },
+    }),
+    prisma.payment.groupBy({
+      by: ["userId"],
+      where: { status: "success" },
+      _sum: { amount: true },
+    }),
+    prisma.subscription.findMany({
+      where: { status: { in: ["free", "active", "trial", "grace"] } },
+      include: { plan: { select: { name: true, code: true } } },
+      orderBy: { startedAt: "desc" },
+    }),
+  ]);
+
+  const runByUser = Object.fromEntries(runStats.map((r) => [r.userId, r]));
+  const meetingByUser = Object.fromEntries(meetingStats.map((m) => [m.createdByUserId ?? "", m]));
+  const paymentByUser = Object.fromEntries(paymentStats.map((p) => [p.userId, p]));
+  const subByUser: Record<string, typeof activeSubscriptions[0]> = {};
+  for (const sub of activeSubscriptions) {
+    if (!subByUser[sub.userId]) subByUser[sub.userId] = sub;
+  }
+
+  const userRows = users.map((u) => {
+    const runs = runByUser[u.id];
+    const meetings = meetingByUser[u.id];
+    const payments = paymentByUser[u.id];
+    const sub = subByUser[u.id];
+    const daysSinceReg = Math.floor((Date.now() - new Date(u.createdAt).getTime()) / 86400000);
+
+    return {
+      ...u,
+      daysSinceReg,
+      meetingsProcessed: runs?._count._all ?? 0,
+      audioHours: Math.round(((meetings?._sum.sourceDurationSec ?? 0) / 3600) * 10) / 10,
+      aiCostUsd: Math.round((runs?._sum.totalCost ?? 0) * 100) / 100,
+      paidRub: Math.round(payments?._sum.amount ?? 0),
+      subscription: sub ? { status: sub.status, planName: sub.plan?.name ?? sub.planCode, expiresAt: sub.expiresAt } : null,
+    };
+  });
+
+  const totals = {
+    totalUsers: users.length,
+    totalMeetingsProcessed: runStats.reduce((s, r) => s + r._count._all, 0),
+    totalAiCostUsd: Math.round(runStats.reduce((s, r) => s + (r._sum.totalCost ?? 0), 0) * 100) / 100,
+    totalPaidRub: Math.round(paymentStats.reduce((s, p) => s + (p._sum.amount ?? 0), 0)),
+  };
+
+  res.json({ totals, users: userRows });
+});
+
 // Журнал обработок — видны все запуски всех пользователей (§25)
 adminRouter.get("/runs", async (req, res) => {
   const parsed = runsFilterSchema.safeParse(req.query);
