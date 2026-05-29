@@ -1,22 +1,15 @@
 # PROJECT RUN GUIDE
 
-Ниже — полный пошаговый гайд для локального запуска проекта Meeting AI MVP.
+Полный гайд для локального запуска AI Meet Factory.
 
 ## 1) Что нужно заранее
-
-Убедись, что на машине установлены:
 
 - Node.js 20+
 - pnpm 9+
 - Docker + Docker Compose
 
-Проверка:
-
 ```bash
-node -v
-pnpm -v
-docker --version
-docker compose version
+node -v && pnpm -v && docker --version
 ```
 
 Если чего-то нет:
@@ -25,219 +18,136 @@ docker compose version
 - pnpm: `npm install -g pnpm`
 - Docker Desktop: [docker.com](https://www.docker.com/products/docker-desktop/)
 
-## 2) Перейти в папку проекта
-
-```bash
-cd "/Users/rushan/python/codex/My meeting AI"
-```
-
-## 3) Поднять инфраструктуру (Postgres, Redis, Mailpit)
-
-Проект использует локальные сервисы из `infra/docker-compose.yml`:
-
-- Postgres — основная БД
-- Redis — очередь фоновой обработки
-- Mailpit — локальный SMTP для теста email-экспорта
-
-Запуск:
+## 2) Поднять инфраструктуру (Postgres, Redis, Mailpit)
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d
 ```
 
-Проверка статуса:
+Проверка:
 
 ```bash
 docker compose -f infra/docker-compose.yml ps
 ```
 
-Если сервисы не в `Up`, посмотри логи:
+Сервисы: Postgres (5432) · Redis (6379) · Mailpit UI (8025)
 
-```bash
-docker compose -f infra/docker-compose.yml logs
-```
-
-## 4) Установить зависимости monorepo
+## 3) Установить зависимости
 
 ```bash
 pnpm install
 ```
 
-Это установит зависимости для:
-
-- `apps/backend`
-- `apps/frontend`
-- `packages/shared`
-
-## 5) Создать и настроить backend env
-
-Скопируй шаблон:
+## 4) Настроить backend env
 
 ```bash
 cp apps/backend/.env.example apps/backend/.env
 ```
 
-Открой `apps/backend/.env` и проверь ключевые переменные:
+Ключевые переменные в `apps/backend/.env`:
 
-- `PORT=4000`
-- `DATABASE_URL=postgresql://meeting_ai:meeting_ai@localhost:5432/meeting_ai?schema=public`
-- `JWT_SECRET=change_me` (замени на свое безопасное значение)
-- `REDIS_URL=redis://localhost:6379`
-- `UPLOAD_DIR=./uploads`
-- `MAX_MEETING_MINUTES=120`
-- `TRANSCRIPTION_PROVIDER=mock`
-- `POSTPROCESSING_PROVIDER=mock`
-- `TELEGRAM_BOT_TOKEN=` (опционально)
-- `SMTP_HOST=localhost`
-- `SMTP_PORT=1025`
-- `SMTP_FROM=meeting-ai@example.local`
+```env
+PORT=4000
+DATABASE_URL=postgresql://meeting_ai:meeting_ai@localhost:5432/meeting_ai?schema=public
+JWT_SECRET=change_me
+REDIS_URL=redis://localhost:6379
+UPLOAD_DIR=./uploads
+MAX_MEETING_MINUTES=120
+APP_URL=http://localhost:5173
 
-Рекомендуемый старт для MVP:
+# AI провайдеры (mock не требует ключей)
+TRANSCRIPTION_PROVIDER=mock
+POSTPROCESSING_PROVIDER=mock
 
-- оставить `TRANSCRIPTION_PROVIDER=mock`
-- оставить `POSTPROCESSING_PROVIDER=mock`
-
-Так проект запустится без платных AI API.
-
-## 6) Подготовить Prisma
-
-Сгенерировать Prisma Client:
-
-```bash
-pnpm --filter @meeting-ai/backend prisma:generate
+# Email (Mailpit работает без настройки)
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_FROM=meeting-ai@example.local
 ```
 
-Применить миграции:
+## 5) Применить миграции
 
 ```bash
 pnpm --filter @meeting-ai/backend prisma:migrate
 ```
 
-При необходимости можно сидировать данные:
+> Миграции включают автоматический seed тарифных планов (free, starter, pro).
 
-```bash
-pnpm --filter @meeting-ai/backend prisma:seed
-```
-
-## 7–9) Запустить всё одной командой (рекомендуется)
+## 6) Запустить всё одной командой (рекомендуется)
 
 ```bash
 pnpm dev:all
 ```
 
-Эта команда запускает backend API, worker и frontend одновременно. Один Ctrl+C останавливает всё.
+Запускает backend API + worker + frontend одновременно. Ctrl+C останавливает всё.
 
-> **Важно:** без worker транскрибация не будет работать — файлы встанут в очередь и никогда не обработаются.
-
----
+> **Важно:** worker обязателен — без него транскрибация не запустится.
 
 Либо по отдельности в трёх терминалах:
 
-**Терминал 1 — backend API:**
-
 ```bash
-pnpm dev:backend
+pnpm dev:backend    # Терминал 1 — API на :4000
+pnpm dev:worker     # Терминал 2 — BullMQ worker
+pnpm dev:frontend   # Терминал 3 — Vite на :5173
 ```
 
-**Терминал 2 — worker (обязательно):**
+Адреса: Frontend: `http://localhost:5173` · API: `http://localhost:4000/api` · Почта: `http://localhost:8025`
+
+## 7) Первоначальная настройка admin-функций
+
+После первого запуска:
+
+1. Зарегистрироваться → подтвердить email (письмо в Mailpit)
+2. Через SQL дать себе права admin:
 
 ```bash
-pnpm dev:worker
+docker exec infra-postgres-1 psql -U meeting_ai -d meeting_ai \
+  -c 'UPDATE "User" SET "isAdmin" = true WHERE email = '"'"'your@email.com'"'"';'
 ```
 
-**Терминал 3 — frontend:**
+1. Зайти в `/admin/archive` → нажать «Создать архивариуса» (нужно сделать один раз)
+
+## 8) Smoke test
+
+1. Открыть `http://localhost:5173/register` → зарегистрироваться → подтвердить email
+2. Войти → создать встречу → загрузить аудио/видео файл
+3. Дождаться завершения pipeline
+4. Проверить вкладки: транскрипция, спикеры, саммари, задачи, чат, экспорт
+5. Проверить admin-панель:
+
+- `/admin/dashboard` — аналитика
+- `/admin/runs` — журнал обработок
+- `/admin/users` — управление пользователями
+- `/admin/subscriptions` — подписки
+- `/admin/archive` — архив удалённых пользователей
+
+## 9) Полезные команды
 
 ```bash
-pnpm dev:frontend
-```
-
-Открыть в браузере:
-
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:4000/api`
-
-## 10) Быстрый smoke test (основной сценарий)
-
-1. Открыть `http://localhost:5173`
-2. Зарегистрироваться (`/register`) или войти (`/login`)
-3. Создать meeting на экране `/meetings`
-4. Открыть meeting details
-5. Загрузить аудио/видео файл
-6. Убедиться, что файл длиной >120 минут отклоняется понятной ошибкой
-7. Подождать завершения pipeline
-8. Проверить в details:
-   - transcript
-   - speakers
-   - summary
-   - tasks
-   - Q&A
-9. Проверить export:
-   - transcript.txt download
-   - export email/telegram
-10. Проверить admin:
-
-- `/admin/runs` список run-ов
-- `/admin/runs/:runId` детали, шаги, ошибки, стоимость, rerun
-- `/admin/models` смена transcription/postprocessing моделей
-
-## 11) Где смотреть почту и логи
-
-- Mailpit UI (локально) обычно на `http://localhost:8025` (если не меняли docker-compose)
-- API logs — терминал с `pnpm dev:backend`
-- Worker logs — терминал с `pnpm --filter @meeting-ai/backend dev:worker`
-
-## 12) Полезные команды во время разработки
-
-Type check backend:
-
-```bash
+# TypeScript проверка
 pnpm --filter @meeting-ai/backend lint
-```
-
-Type check frontend:
-
-```bash
 pnpm --filter @meeting-ai/frontend lint
+
+# Сборка всего monorepo
+pnpm build
+
+# Просмотр очереди Redis
+docker exec infra-redis-1 redis-cli llen bull:meeting-processing:wait
 ```
 
-Сборка всего monorepo:
+## 10) Типичные проблемы
+
+**Транскрибация не запускается** — worker не запущен. Запусти `pnpm dev:worker`.
+
+**Не подключается к БД** — проверь что Postgres поднят: `docker compose -f infra/docker-compose.yml ps`.
+
+**Email не приходит** — открой Mailpit: `http://localhost:8025`.
+
+**Ошибка EMAIL_NOT_VERIFIED при входе** — подтверди email через Mailpit или выполни:
 
 ```bash
-pnpm build
+docker exec infra-postgres-1 psql -U meeting_ai -d meeting_ai \
+  -c 'UPDATE "User" SET "emailVerified" = true WHERE "emailVerifyToken" IS NULL AND "emailVerified" = false;'
 ```
 
-## 13) Если что-то не работает
-
-### Проблема: не подключается к БД
-
-- Проверь, что docker-контейнер Postgres поднят
-- Проверь `DATABASE_URL` в `apps/backend/.env`
-- Повтори миграции
-
-### Проблема: обработка не запускается
-
-- Проверь, что Redis поднят
-- Проверь, что worker запущен
-- Смотри ошибки в worker логах
-
-### Проблема: экспорт email не работает
-
-- Проверь `SMTP_HOST/SMTP_PORT`
-- Для локали оставь Mailpit
-
-### Проблема: export telegram не работает
-
-- Укажи `TELEGRAM_BOT_TOKEN`
-- Проверь корректный `chat_id`
-
-### Проблема: paid AI не работает
-
-- В текущем MVP OpenAI adapters помечены как stub (не реализованы)
-- Для стабильной локальной работы используй `mock` провайдеры
-
-## 14) Что важно помнить
-
-- Для полного flow всегда нужны 3 процесса: API + worker + frontend.
-- `MAX_MEETING_MINUTES` регулирует лимит загрузки длительности.
-- Исходные файлы хранятся временно и удаляются в процессе pipeline.
-- Admin-раздел рассчитан как internal tool (без отдельной enterprise RBAC панели).
+**Удаление пользователя выдаёт ошибку NO_ARCHIVIST** — создай архивариуса в `/admin/archive`.

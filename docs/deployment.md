@@ -285,29 +285,28 @@ cd /opt/meeting-ai
 # Получить изменения из GitHub
 git pull origin main
 
-# Пересобрать shared-пакет (если изменился)
-/opt/meeting-ai/node_modules/.pnpm/node_modules/.bin/tsc \
-  -p /opt/meeting-ai/packages/shared/tsconfig.json
-
-# Применить новые миграции БД и обновить Prisma Client (обязательно оба шага)
+# Применить новые миграции БД и обновить Prisma Client (ОБЯЗАТЕЛЬНО оба шага вместе)
 cd apps/backend && npx prisma migrate deploy && npx prisma generate && cd ../..
 
 # Пересобрать фронтенд
 cd apps/frontend && pnpm build && cd ../..
 
-# Перезапустить бэкенд и воркер
-pm2 restart all
+# Перезапустить бэкенд
+pm2 restart meeting-ai-api
 ```
+
+> **Критично:** без `prisma generate` после `migrate deploy` бэкенд не видит новые поля БД и возвращает ошибки. Всегда запускать оба шага вместе.
 
 ---
 
 ## Диагностика проблем
 
 | Симптом | Команда для диагностики |
-|---------|------------------------|
+|---|---|
 | Сайт не открывается | `systemctl status nginx` |
 | API не отвечает | `pm2 logs meeting-ai-api --lines 30` |
 | Воркер не обрабатывает задачи | `pm2 logs meeting-ai-worker --lines 30` |
+| Транскрибация висит | `pm2 list` — проверить что worker online |
 | Ошибка БД | `systemctl status postgresql` |
 | Redis недоступен | `redis-cli ping` |
 | Нет места на диске | `df -h /` |
@@ -317,3 +316,7 @@ pm2 restart all
 systemctl restart postgresql redis-server nginx
 pm2 restart all
 ```
+
+## Первоначальная настройка архивариуса
+
+После первого деплоя зайти в `/admin/archive` и нажать «Создать архивариуса». Без него удаление пользователей вернёт ошибку.
