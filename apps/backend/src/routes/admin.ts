@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Prisma, WorkspaceKind, MembershipRole } from "@prisma/client";
+import { Prisma, WorkspaceKind, MembershipRole, SubscriptionStatus, BillingPeriod, PaymentStatus } from "@prisma/client";
 import { z } from "zod";
 import { adminRequired } from "../middleware/auth";
 import { prisma } from "../db";
@@ -489,4 +489,160 @@ adminRouter.post("/workspaces/:workspaceId/transfer", async (req, res) => {
   });
 
   res.json({ ok: true });
+});
+
+// ── Планы ─────────────────────────────────────────────────────────────────
+
+adminRouter.get("/plans", async (_req, res) => {
+  const plans = await prisma.plan.findMany({ orderBy: { priceMonthly: "asc" } });
+  res.json(plans);
+});
+
+// ── Подписки ───────────────────────────────────────────────────────────────
+
+const assignSubscriptionSchema = z.object({
+  planId: z.string().min(1),
+  billingPeriod: z.enum(["monthly", "yearly"]).optional(),
+  status: z.enum(["free", "trial", "active", "grace", "canceled", "expired"]).optional().default("active"),
+  startedAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  note: z.string().optional(),
+  // Опциональная запись платежа
+  paymentAmount: z.number().positive().optional(),
+  paymentNote: z.string().optional(),
+});
+
+// Назначить подписку пользователю вручную
+adminRouter.post("/users/:userId/subscriptions", async (req, res) => {
+  const parsed = assignSubscriptionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.params.userId } });
+  if (!user) { res.status(404).json({ error: "Пользователь не найден" }); return; }
+
+  const plan = await prisma.plan.findUnique({ where: { id: parsed.data.planId } });
+  if (!plan) { res.status(404).json({ error: "Тариф не найден" }); return; }
+
+  const { planId, billingPeriod, status, startedAt, expiresAt, note, paymentAmount, paymentNote } = parsed.data;
+
+  const subscription = await prisma.$transaction(async (tx) => {
+    const sub = await tx.subscription.create({
+      data: {
+        userId: user.id,
+        planId,
+        planCode: plan.code,
+        billingPeriod: billingPeriod as BillingPeriod | undefined,
+        status: status as SubscriptionStatus,
+        startedAt: startedAt ? new Date(startedAt) : new Date(),
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        gracePeriodEndsAt: expiresAt && plan.gracePeriodDays > 0
+          ? new Date(new Date(expiresAt).getTime() + plan.gracePeriodDays * 86400000)
+          : null,
+        note,
+      },
+      include: { plan: true },
+    });
+
+    if (paymentAmount) {
+      await tx.payment.create({
+        data: {
+          userId: user.id,
+          subscriptionId: sub.id,
+          amount: paymentAmount,
+          status: PaymentStatus.success,
+          note: paymentNote,
+        },
+      });
+    }
+
+    return sub;
+  });
+
+  res.status(201).json(subscription);
+});
+
+// Список подписок пользователя
+adminRouter.get("/users/:userId/subscriptions", async (req, res) => {
+  const subs = await prisma.subscription.findMany({
+    where: { userId: req.params.userId },
+    include: { plan: true, payments: true },
+    orderBy: { startedAt: "desc" },
+  });
+  res.json(subs);
+});
+
+// Список всех подписок
+adminRouter.get("/subscriptions", async (req, res) => {
+  const status = typeof req.query.status === "string" ? req.query.status : undefined;
+
+  const subs = await prisma.subscription.findMany({
+    where: status ? { status: status as SubscriptionStatus } : undefined,
+    include: {
+      plan: true,
+      user: { select: { id: true, email: true, name: true } },
+    },
+    orderBy: { startedAt: "desc" },
+    take: 200,
+  });
+  res.json(subs);
+});
+
+// Обновить подписку (продлить, отменить, изменить статус)
+const updateSubscriptionSchema = z.object({
+  status: z.enum(["free", "trial", "active", "grace", "canceled", "expired"]).optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  cancelReason: z.string().optional(),
+  note: z.string().optional(),
+});
+
+adminRouter.patch("/subscriptions/:subId", async (req, res) => {
+  const parsed = updateSubscriptionSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+
+  const { status, expiresAt, cancelReason, note } = parsed.data;
+  const updateData: Prisma.SubscriptionUpdateInput = {};
+  if (status) updateData.status = status as SubscriptionStatus;
+  if (expiresAt !== undefined) updateData.expiresAt = expiresAt ? new Date(expiresAt) : null;
+  if (cancelReason) { updateData.cancelReason = cancelReason; updateData.cancelledAt = new Date(); }
+  if (note !== undefined) updateData.note = note;
+
+  try {
+    const sub = await prisma.subscription.update({
+      where: { id: req.params.subId },
+      data: updateData,
+      include: { plan: true },
+    });
+    res.json(sub);
+  } catch {
+    res.status(404).json({ error: "Подписка не найдена" });
+  }
+});
+
+// ── Платежи ────────────────────────────────────────────────────────────────
+
+const createPaymentSchema = z.object({
+  userId: z.string().min(1),
+  subscriptionId: z.string().optional(),
+  amount: z.number().positive(),
+  status: z.enum(["success", "failed", "refunded"]).default("success"),
+  note: z.string().optional(),
+});
+
+adminRouter.post("/payments", async (req, res) => {
+  const parsed = createPaymentSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+
+  const payment = await prisma.payment.create({
+    data: {
+      userId: parsed.data.userId,
+      subscriptionId: parsed.data.subscriptionId,
+      amount: parsed.data.amount,
+      status: parsed.data.status as PaymentStatus,
+      note: parsed.data.note,
+    },
+  });
+  res.status(201).json(payment);
 });

@@ -55,8 +55,10 @@ enum ExportStatus {
 }
 
 enum SubscriptionStatus {
+  free
   trial
   active
+  grace
   canceled
   expired
 }
@@ -64,6 +66,17 @@ enum SubscriptionStatus {
 enum BillingPeriod {
   monthly
   yearly
+}
+
+enum AccountType {
+  INDIVIDUAL
+  CORPORATE
+}
+
+enum PaymentStatus {
+  success
+  failed
+  refunded
 }
 
 enum ProcessingStepName {
@@ -90,6 +103,7 @@ model User {
   emailVerifyExpires     DateTime?
   isBlocked              Boolean       @default(false)
   isArchivist            Boolean       @default(false)
+  accountType            AccountType   @default(INDIVIDUAL)
   lastActiveAt           DateTime?
   loginCount             Int           @default(0)
   passwordResetToken     String?       @unique
@@ -100,6 +114,8 @@ model User {
   questions          MeetingQuestion[]
   runs               MeetingProcessingRun[]
   subscriptions      Subscription[]
+  payments           Payment[]
+  usageRecords       UsageRecord[]
   personalWorkspace  Workspace?    @relation("PersonalWorkspaceOwner")
   exportLogs         ExportLog[]
   processingStepLogs ProcessingStepLog[]
@@ -271,21 +287,77 @@ model ExportLog {
   @@index([meetingId, createdAt])
 }
 
+model Plan {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  priceMonthly     Float
+  priceYearly      Float
+  minutesPerMonth  Int      @default(0)
+  meetingsPerMonth Int      @default(0)
+  storageDays      Int      @default(365)
+  gracePeriodDays  Int      @default(14)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  subscriptions Subscription[]
+}
+
 model Subscription {
-  id            String             @id @default(cuid())
-  userId        String
-  workspaceId   String?
-  planCode      String
-  billingPeriod BillingPeriod?
-  status        SubscriptionStatus
-  startedAt     DateTime           @default(now())
-  expiresAt     DateTime?
+  id                String             @id @default(cuid())
+  userId            String
+  workspaceId       String?
+  planId            String?
+  planCode          String
+  billingPeriod     BillingPeriod?
+  status            SubscriptionStatus
+  startedAt         DateTime           @default(now())
+  expiresAt         DateTime?
+  gracePeriodEndsAt DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
+  note              String?
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  plan      Plan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
+  payments  Payment[]
 
   @@index([userId])
   @@index([workspaceId])
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  userId         String
+  subscriptionId String?
+  amount         Float
+  status         PaymentStatus
+  note           String?
+  createdAt      DateTime      @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model UsageRecord {
+  id                   String   @id @default(cuid())
+  userId               String
+  period               String
+  audioMinutes         Int      @default(0)
+  meetingsCount        Int      @default(0)
+  transcriptionCostUsd Float    @default(0)
+  summaryCostUsd       Float    @default(0)
+  qaCostUsd            Float    @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, period])
+  @@index([userId])
 }
 
 model AIModelConfig {

@@ -17,6 +17,7 @@ import {
   Download,
   FileAudio,
   FileText,
+  CreditCard,
   FolderOpen,
   HelpCircle,
   LayoutDashboard,
@@ -77,6 +78,9 @@ const AppShell = ({ children }: { children: ReactNode }) => {
           )}
           {isAdmin && (
             <SidebarLink to="/admin/users" icon={<Users size={16} />} label="Пользователи" />
+          )}
+          {isAdmin && (
+            <SidebarLink to="/admin/subscriptions" icon={<CreditCard size={16} />} label="Подписки" />
           )}
           {isAdmin && (
             <SidebarLink to="/admin/archive" icon={<FolderOpen size={16} />} label="Архив" />
@@ -2570,6 +2574,229 @@ const VerifyEmailPage = () => {
   );
 };
 
+// ── AdminSubscriptionsPage ────────────────────────────────────────────────
+
+const STATUS_LABEL_SUB: Record<string, string> = {
+  free: "Бесплатный", trial: "Пробный", active: "Активна",
+  grace: "Льготный период", canceled: "Отменена", expired: "Истекла",
+};
+const STATUS_CLASS_SUB: Record<string, string> = {
+  free: "badge-created", trial: "badge-processing", active: "badge-ready",
+  grace: "badge-processing", canceled: "badge-failed", expired: "badge-failed",
+};
+
+const AdminSubscriptionsPage = () => {
+  const queryClient = useQueryClient();
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [showForm, setShowForm] = useState(false);
+
+  // Форма назначения подписки
+  const [planId, setPlanId] = useState("");
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly" | "">("");
+  const [status, setStatus] = useState("active");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [subNote, setSubNote] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
+
+  const users = useQuery({
+    queryKey: ["admin-users-sub"],
+    queryFn: async () => (await api.get("/admin/users")).data,
+  });
+
+  const plans = useQuery({
+    queryKey: ["admin-plans"],
+    queryFn: async () => (await api.get("/admin/plans")).data,
+  });
+
+  const userSubs = useQuery({
+    queryKey: ["admin-user-subs", selectedUserId],
+    queryFn: async () => (await api.get(`/admin/users/${selectedUserId}/subscriptions`)).data,
+    enabled: !!selectedUserId,
+  });
+
+  const assign = useMutation({
+    mutationFn: async () => api.post(`/admin/users/${selectedUserId}/subscriptions`, {
+      planId,
+      billingPeriod: billingPeriod || undefined,
+      status,
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+      note: subNote || undefined,
+      paymentAmount: paymentAmount ? Number(paymentAmount) : undefined,
+      paymentNote: paymentNote || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-user-subs", selectedUserId] });
+      setPlanId(""); setBillingPeriod(""); setStatus("active");
+      setExpiresAt(""); setSubNote(""); setPaymentAmount(""); setPaymentNote("");
+      setShowForm(false);
+    },
+  });
+
+  const cancelSub = useMutation({
+    mutationFn: async (subId: string) =>
+      api.patch(`/admin/subscriptions/${subId}`, { status: "canceled", cancelReason: "Отменена администратором" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-user-subs", selectedUserId] }),
+  });
+
+  const nonArchivistUsers = (users.data ?? []).filter((u: any) => !u.isArchivist);
+  const selectedUser = nonArchivistUsers.find((u: any) => u.id === selectedUserId);
+
+  return (
+    <AppShell>
+      <section className="card">
+        <h2 style={{ margin: "0 0 16px" }}>Управление подписками</h2>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <select
+            title="Выберите пользователя"
+            value={selectedUserId}
+            onChange={(e) => { setSelectedUserId(e.target.value); setShowForm(false); }}
+            style={{ flex: 1, minWidth: 240 }}
+          >
+            <option value="">— выберите пользователя —</option>
+            {nonArchivistUsers.map((u: any) => (
+              <option key={u.id} value={u.id}>
+                {u.email}{u.name ? ` (${u.name})` : ""}
+              </option>
+            ))}
+          </select>
+          {selectedUserId && (
+            <button className="btn btn-primary btn-sm" onClick={() => setShowForm((v) => !v)}>
+              <Plus size={14} /> {showForm ? "Отмена" : "Назначить подписку"}
+            </button>
+          )}
+        </div>
+      </section>
+
+      {selectedUserId && showForm && (
+        <section className="card">
+          <h3 style={{ margin: "0 0 14px", fontSize: "1em" }}>
+            Новая подписка — {selectedUser?.email}
+          </h3>
+          <div style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              <div>
+                <p style={{ margin: "0 0 4px", fontSize: "0.8em", color: "var(--muted)" }}>Тариф *</p>
+                <select title="Тариф" value={planId} onChange={(e) => setPlanId(e.target.value)} style={{ width: "100%" }}>
+                  <option value="">— выберите —</option>
+                  {(plans.data ?? []).map((p: any) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.priceMonthly === 0 ? "Бесплатно" : `${p.priceMonthly} ₽/мес`})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <p style={{ margin: "0 0 4px", fontSize: "0.8em", color: "var(--muted)" }}>Статус</p>
+                <select title="Статус" value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: "100%" }}>
+                  <option value="free">Бесплатный</option>
+                  <option value="active">Активна</option>
+                  <option value="trial">Пробный</option>
+                </select>
+              </div>
+              <div>
+                <p style={{ margin: "0 0 4px", fontSize: "0.8em", color: "var(--muted)" }}>Период</p>
+                <select title="Период" value={billingPeriod} onChange={(e) => setBillingPeriod(e.target.value as any)} style={{ width: "100%" }}>
+                  <option value="">— не указан —</option>
+                  <option value="monthly">Месяц</option>
+                  <option value="yearly">Год</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <p style={{ margin: "0 0 4px", fontSize: "0.8em", color: "var(--muted)" }}>Действует до</p>
+                <input type="datetime-local" title="Дата окончания подписки" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} style={{ width: "100%" }} />
+              </div>
+              <div>
+                <p style={{ margin: "0 0 4px", fontSize: "0.8em", color: "var(--muted)" }}>Комментарий к подписке</p>
+                <input value={subNote} onChange={(e) => setSubNote(e.target.value)} placeholder="Необязательно" style={{ width: "100%" }} />
+              </div>
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+              <p style={{ margin: "0 0 8px", fontSize: "0.85em", fontWeight: 600 }}>Платёж (необязательно)</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <p style={{ margin: "0 0 4px", fontSize: "0.8em", color: "var(--muted)" }}>Сумма, ₽</p>
+                  <input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="490" style={{ width: "100%" }} />
+                </div>
+                <div>
+                  <p style={{ margin: "0 0 4px", fontSize: "0.8em", color: "var(--muted)" }}>Комментарий к платежу</p>
+                  <input value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} placeholder="Необязательно" style={{ width: "100%" }} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowForm(false)}>Отмена</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => assign.mutate()}
+                disabled={!planId || assign.isPending}
+              >
+                {assign.isPending ? "Сохранение..." : "Назначить подписку"}
+              </button>
+            </div>
+            {assign.isError && <p className="error">Не удалось назначить подписку</p>}
+          </div>
+        </section>
+      )}
+
+      {selectedUserId && (
+        <section className="card">
+          <h3 style={{ margin: "0 0 14px", fontSize: "1em" }}>
+            История подписок — {selectedUser?.email}
+          </h3>
+          {userSubs.isLoading && <p className="muted">Загрузка...</p>}
+          {!userSubs.isLoading && userSubs.data?.length === 0 && (
+            <p className="muted">Подписок нет.</p>
+          )}
+          {userSubs.data?.map((sub: any) => (
+            <div key={sub.id} style={{ borderBottom: "1px solid var(--line)", padding: "10px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <strong style={{ fontSize: "0.95em" }}>{sub.plan?.name ?? sub.planCode}</strong>
+                  <span className={`badge ${STATUS_CLASS_SUB[sub.status] ?? "badge-created"}`}>
+                    {STATUS_LABEL_SUB[sub.status] ?? sub.status}
+                  </span>
+                  {sub.billingPeriod && (
+                    <span className="muted" style={{ fontSize: "0.8em" }}>
+                      {sub.billingPeriod === "monthly" ? "Месяц" : "Год"}
+                    </span>
+                  )}
+                </div>
+                <p style={{ margin: 0, fontSize: "0.8em", color: "var(--muted)" }}>
+                  С {new Date(sub.startedAt).toLocaleDateString("ru")}
+                  {sub.expiresAt && ` · до ${new Date(sub.expiresAt).toLocaleDateString("ru")}`}
+                  {sub.payments?.length > 0 && ` · оплачено: ${sub.payments.reduce((s: number, p: any) => s + p.amount, 0)} ₽`}
+                  {sub.note && ` · ${sub.note}`}
+                </p>
+                {sub.cancelReason && (
+                  <p style={{ margin: "2px 0 0", fontSize: "0.78em", color: "var(--muted)" }}>
+                    Причина отмены: {sub.cancelReason}
+                  </p>
+                )}
+              </div>
+              {(sub.status === "active" || sub.status === "trial" || sub.status === "grace") && (
+                <button
+                  className="btn btn-danger btn-sm"
+                  style={{ flexShrink: 0 }}
+                  onClick={() => cancelSub.mutate(sub.id)}
+                  disabled={cancelSub.isPending}
+                >
+                  Отменить
+                </button>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
+    </AppShell>
+  );
+};
+
 // ── AdminArchivePage ──────────────────────────────────────────────────────
 
 const AdminArchivePage = () => {
@@ -2713,6 +2940,7 @@ export const App = () => (
     <Route path="/admin/runs/:runId" element={<Guard><AdminRunDetailsPage /></Guard>} />
     <Route path="/admin/models" element={<Guard><AdminModelsPage /></Guard>} />
     <Route path="/admin/users" element={<Guard><AdminUsersPage /></Guard>} />
+    <Route path="/admin/subscriptions" element={<Guard><AdminSubscriptionsPage /></Guard>} />
     <Route path="/admin/archive" element={<Guard><AdminArchivePage /></Guard>} />
     <Route path="*" element={<Navigate to="/meetings" replace />} />
   </Routes>
