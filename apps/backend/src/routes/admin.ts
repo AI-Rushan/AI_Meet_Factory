@@ -544,6 +544,7 @@ adminRouter.get("/workspaces", async (_req, res) => {
 });
 
 // Переназначить workspace другому пользователю
+// Переназначить workspace: перенести встречи в личный workspace целевого пользователя
 adminRouter.post("/workspaces/:workspaceId/transfer", async (req, res) => {
   const { targetUserId } = z.object({ targetUserId: z.string().min(1) }).parse(req.body);
 
@@ -556,14 +557,21 @@ adminRouter.post("/workspaces/:workspaceId/transfer", async (req, res) => {
   if (!targetUser) return res.status(404).json({ error: "Пользователь не найден" });
   if (targetUser.isArchivist) return res.status(400).json({ error: "Нельзя назначить архивариуса владельцем" });
 
+  const targetWorkspace = await prisma.workspace.findFirst({
+    where: { personalOwnerUserId: targetUser.id },
+  });
+  if (!targetWorkspace) return res.status(400).json({ error: "У пользователя нет личного workspace" });
+
   await prisma.$transaction(async (tx) => {
+    // Переносим все встречи в личный workspace целевого пользователя
+    await tx.meeting.updateMany({
+      where: { workspaceId: workspace.id },
+      data: { workspaceId: targetWorkspace.id, createdByUserId: targetUser.id },
+    });
+    // Помечаем архивный workspace как переданный (очищаем originalOwnerEmail)
     await tx.workspace.update({
       where: { id: workspace.id },
-      data: { personalOwnerUserId: targetUser.id },
-    });
-    await tx.membership.deleteMany({ where: { workspaceId: workspace.id } });
-    await tx.membership.create({
-      data: { userId: targetUser.id, workspaceId: workspace.id, role: MembershipRole.OWNER },
+      data: { originalOwnerEmail: null },
     });
   });
 
