@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { forgotPasswordSchema, loginSchema, registerSchema, resetPasswordSchema } from "../dto/auth";
+import { forgotPasswordSchema, loginSchema, registerSchema, resetPasswordSchema, verifyEmailSchema } from "../dto/auth";
 import { authRequired } from "../middleware/auth";
 import { authService } from "../services/authService";
 
@@ -25,6 +25,25 @@ authRouter.post("/register", async (req, res) => {
   }
 });
 
+authRouter.get("/verify-email", async (req, res) => {
+  const payload = verifyEmailSchema.safeParse({ token: req.query.token });
+  if (!payload.success) {
+    res.status(400).json({ error: "Missing token" });
+    return;
+  }
+
+  try {
+    const result = await authService.verifyEmail(payload.data);
+    res.json(result);
+  } catch (error) {
+    if (error instanceof Error && error.message === "INVALID_OR_EXPIRED_TOKEN") {
+      res.status(400).json({ error: "Invalid or expired verification link" });
+      return;
+    }
+    res.status(500).json({ error: "Email verification failed" });
+  }
+});
+
 authRouter.post("/login", async (req, res) => {
   const payload = loginSchema.safeParse(req.body);
   if (!payload.success) {
@@ -38,6 +57,14 @@ authRouter.post("/login", async (req, res) => {
   } catch (error) {
     if (error instanceof Error && error.message === "INVALID_CREDENTIALS") {
       res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+    if (error instanceof Error && error.message === "EMAIL_NOT_VERIFIED") {
+      res.status(403).json({ error: "EMAIL_NOT_VERIFIED" });
+      return;
+    }
+    if (error instanceof Error && error.message === "USER_BLOCKED") {
+      res.status(403).json({ error: "USER_BLOCKED" });
       return;
     }
     if (error instanceof Error && error.message === "NO_WORKSPACE_MEMBERSHIP") {

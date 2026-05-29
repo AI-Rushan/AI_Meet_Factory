@@ -21,9 +21,9 @@ docker compose version
 
 Если чего-то нет:
 
-- Node.js: https://nodejs.org/
+- Node.js: [nodejs.org](https://nodejs.org/)
 - pnpm: `npm install -g pnpm`
-- Docker Desktop: https://www.docker.com/products/docker-desktop/
+- Docker Desktop: [docker.com](https://www.docker.com/products/docker-desktop/)
 
 ## 2) Перейти в папку проекта
 
@@ -119,36 +119,35 @@ pnpm --filter @meeting-ai/backend prisma:migrate
 pnpm --filter @meeting-ai/backend prisma:seed
 ```
 
-## 7) Запустить backend API
-
-В отдельном терминале:
+## 7–9) Запустить всё одной командой (рекомендуется)
 
 ```bash
-cd "/Users/rushan/python/codex/My meeting AI"
+pnpm dev:all
+```
+
+Эта команда запускает backend API, worker и frontend одновременно. Один Ctrl+C останавливает всё.
+
+> **Важно:** без worker транскрибация не будет работать — файлы встанут в очередь и никогда не обработаются.
+
+---
+
+Либо по отдельности в трёх терминалах:
+
+**Терминал 1 — backend API:**
+
+```bash
 pnpm dev:backend
 ```
 
-Ожидаем API на `http://localhost:4000`.
-
-## 8) Запустить worker (обязательно)
-
-Worker обрабатывает очередь pipeline (transcription/summary/tasks и т.д.).
-
-Во втором терминале:
+**Терминал 2 — worker (обязательно):**
 
 ```bash
-cd "/Users/rushan/python/codex/My meeting AI"
-pnpm --filter @meeting-ai/backend dev:worker
+pnpm dev:worker
 ```
 
-Без worker загрузка файлов будет приниматься, но обработка не пойдет.
-
-## 9) Запустить frontend
-
-В третьем терминале:
+**Терминал 3 — frontend:**
 
 ```bash
-cd "/Users/rushan/python/codex/My meeting AI"
 pnpm dev:frontend
 ```
 
@@ -176,9 +175,10 @@ pnpm dev:frontend
    - transcript.txt download
    - export email/telegram
 10. Проверить admin:
-   - `/admin/runs` список run-ов
-   - `/admin/runs/:runId` детали, шаги, ошибки, стоимость, rerun
-   - `/admin/models` смена transcription/postprocessing моделей
+
+- `/admin/runs` список run-ов
+- `/admin/runs/:runId` детали, шаги, ошибки, стоимость, rerun
+- `/admin/models` смена transcription/postprocessing моделей
 
 ## 11) Где смотреть почту и логи
 

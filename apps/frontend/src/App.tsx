@@ -125,6 +125,10 @@ const resolveAuthError = (error: unknown): string => {
     const resp = (error as { response: { status: number; data?: { error?: string } } }).response;
     if (resp.status === 409) return "Этот email уже зарегистрирован. Войдите или используйте другой адрес.";
     if (resp.status === 401) return "Неверный email или пароль.";
+    if (resp.status === 403 && resp.data?.error === "EMAIL_NOT_VERIFIED")
+      return "Email не подтверждён. Проверьте почту и перейдите по ссылке из письма.";
+    if (resp.status === 403 && resp.data?.error === "USER_BLOCKED")
+      return "Ваш аккаунт заблокирован. Обратитесь к администратору.";
     if (resp.status === 400) return "Проверьте правильность введённых данных (email, пароль минимум 6 символов).";
     if (resp.data?.error) return resp.data.error;
   }
@@ -137,6 +141,8 @@ const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [workspaceName, setWorkspaceName] = useState("My workspace");
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -146,10 +152,14 @@ const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
           ? { email, password }
           : { email, password, name: name || undefined, workspaceName };
       const response = await api.post(endpoint, payload);
-      return response.data as { token: string };
+      return response.data as { token: string } | { pending: true; email: string };
     },
     onSuccess: (data) => {
-      saveToken(data.token);
+      if ("pending" in data && data.pending) {
+        setRegisteredEmail(data.email);
+        return;
+      }
+      saveToken((data as { token: string }).token);
       navigate("/meetings");
     },
   });
@@ -158,6 +168,22 @@ const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
     event.preventDefault();
     mutation.mutate();
   };
+
+  if (registeredEmail) {
+    return (
+      <div className="auth-wrap">
+        <div className="card auth-card" style={{ textAlign: "center" }}>
+          <BookOpen size={32} color="var(--accent)" />
+          <h2 style={{ margin: "10px 0 4px", fontSize: "1.3em" }}>Проверьте почту</h2>
+          <p style={{ margin: "0", color: "var(--muted)", fontSize: "0.9em", lineHeight: 1.6 }}>
+            Мы отправили письмо на <strong>{registeredEmail}</strong>.
+            <br />
+            Перейдите по ссылке в письме, чтобы подтвердить email и войти в аккаунт.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-wrap">
@@ -198,7 +224,23 @@ const AuthPage = ({ mode }: { mode: "login" | "register" }) => {
             onChange={(e) => setWorkspaceName(e.target.value)}
           />
         )}
-        <button className="btn btn-primary" type="submit" disabled={mutation.isPending} style={{ width: "100%", justifyContent: "center", padding: "10px" }}>
+        {mode === "register" && (
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: "0.85em", lineHeight: 1.5, color: "var(--muted)" }}>
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              style={{ marginTop: 2, flexShrink: 0, width: 16, height: 16, padding: 0, cursor: "pointer" }}
+            />
+            <span>
+              Я ознакомлен с{" "}
+              <Link to="/privacy-policy" target="_blank" rel="noreferrer">политикой конфиденциальности</Link>
+              {" "}и согласен с{" "}
+              <Link to="/personal-data" target="_blank" rel="noreferrer">условиями обработки ПД</Link>
+            </span>
+          </label>
+        )}
+        <button className="btn btn-primary" type="submit" disabled={mutation.isPending || (mode === "register" && !agreed)} style={{ width: "100%", justifyContent: "center", padding: "10px" }}>
           {mutation.isPending ? "Загрузка..." : mode === "login" ? "Войти" : "Создать аккаунт"}
         </button>
 
@@ -458,6 +500,7 @@ const MeetingsPage = () => {
   const [title, setTitle] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"title" | "transcribedAt">("title");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queryClient = useQueryClient();
@@ -480,6 +523,14 @@ const MeetingsPage = () => {
   const sortedMeetings = useMemo(() => {
     if (!meetings.data) return [];
     return [...meetings.data].sort((a: any, b: any) => {
+      if (sortBy === "transcribedAt") {
+        const tA = a.transcript?.createdAt ? new Date(a.transcript.createdAt).getTime() : 0;
+        const tB = b.transcript?.createdAt ? new Date(b.transcript.createdAt).getTime() : 0;
+        if (tA === 0 && tB === 0) return 0;
+        if (tA === 0) return 1;
+        if (tB === 0) return -1;
+        return order === "asc" ? tA - tB : tB - tA;
+      }
       const dateA = parseTitleDate(a.title);
       const dateB = parseTitleDate(b.title);
       if (dateA !== 0 || dateB !== 0) {
@@ -488,7 +539,7 @@ const MeetingsPage = () => {
       const cmp = a.title.localeCompare(b.title, "ru", { sensitivity: "base" });
       return order === "asc" ? cmp : -cmp;
     });
-  }, [meetings.data, order]);
+  }, [meetings.data, sortBy, order]);
 
   const createMeeting = useMutation({
     mutationFn: async () => (await api.post("/me/meetings", { title })).data,
@@ -499,7 +550,14 @@ const MeetingsPage = () => {
     },
   });
 
-  const toggleOrder = () => setOrder((o) => (o === "asc" ? "desc" : "asc"));
+  const handleSort = (by: "title" | "transcribedAt") => {
+    if (sortBy === by) {
+      setOrder((o) => (o === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(by);
+      setOrder("desc");
+    }
+  };
 
   return (
     <AppShell>
@@ -546,12 +604,20 @@ const MeetingsPage = () => {
             />
           </div>
           <button
-            className="btn btn-secondary btn-sm"
-            onClick={toggleOrder}
-            title={order === "asc" ? "А → Я (нажмите для Я → А)" : "Я → А (нажмите для А → Я)"}
+            className={`btn btn-sm ${sortBy === "title" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => handleSort("title")}
+            title="Сортировка по названию"
           >
-            {order === "asc" ? <ArrowDownAZ size={15} /> : <ArrowDownZA size={15} />}
-            {order === "asc" ? "А–Я" : "Я–А"}
+            {sortBy === "title" && order === "asc" ? <ArrowDownAZ size={15} /> : <ArrowDownZA size={15} />}
+            {sortBy === "title" && order === "asc" ? "А–Я" : "Я–А"}
+          </button>
+          <button
+            className={`btn btn-sm ${sortBy === "transcribedAt" ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => handleSort("transcribedAt")}
+            title="Сортировка по дате транскрибации"
+          >
+            {sortBy === "transcribedAt" && order === "asc" ? <ArrowDownAZ size={15} /> : <ArrowDownZA size={15} />}
+            Дата транскрибации
           </button>
         </div>
 
@@ -575,6 +641,9 @@ const MeetingsPage = () => {
                   {meeting.title}
                 </p>
                 <p style={{ margin: 0, fontSize: "0.78em", color: "var(--muted)" }}>
+                  {meeting.transcript?.createdAt && (
+                    <>транскрибирована: {new Date(meeting.transcript.createdAt).toLocaleString("ru")} · </>
+                  )}
                   задачи: {meeting._count.tasks} · спикеры: {meeting._count.speakers}
                 </p>
               </div>
@@ -1286,6 +1355,11 @@ const MeetingDetailsPage = () => {
                   <h2 style={{ margin: 0, fontSize: "1.25em", fontWeight: 700 }}>{meetingData.title}</h2>
                   <StatusBadge status={meetingData.status} />
                 </div>
+                {meetingData.transcript?.createdAt && (
+                  <p style={{ margin: "4px 0 0", fontSize: "0.8em", color: "var(--muted)" }}>
+                    Транскрибирована: {new Date(meetingData.transcript.createdAt).toLocaleString("ru")}
+                  </p>
+                )}
                 {meetingData.processingError && (
                   <p className="error" style={{ marginTop: 4, fontSize: "0.85em" }}>{meetingData.processingError}</p>
                 )}
@@ -2074,6 +2148,7 @@ const AdminUsersPage = () => {
   const [editEmail, setEditEmail] = useState("");
   const [editName, setEditName] = useState("");
   const [editIsAdmin, setEditIsAdmin] = useState(false);
+  const [editIsBlocked, setEditIsBlocked] = useState(false);
   const [editPassword, setEditPassword] = useState("");
 
   const [newEmail, setNewEmail] = useState("");
@@ -2099,7 +2174,7 @@ const AdminUsersPage = () => {
 
   const updateUser = useMutation({
     mutationFn: async (userId: string) => {
-      const payload: Record<string, unknown> = { email: editEmail, name: editName || null, isAdmin: editIsAdmin };
+      const payload: Record<string, unknown> = { email: editEmail, name: editName || null, isAdmin: editIsAdmin, isBlocked: editIsBlocked };
       if (editPassword) payload.password = editPassword;
       return (await api.patch(`/admin/users/${userId}`, payload)).data;
     },
@@ -2119,6 +2194,7 @@ const AdminUsersPage = () => {
     setEditEmail(user.email);
     setEditName(user.name ?? "");
     setEditIsAdmin(user.isAdmin);
+    setEditIsBlocked(user.isBlocked);
     setEditPassword("");
   };
 
@@ -2173,13 +2249,17 @@ const AdminUsersPage = () => {
           <div key={user.id} style={{ borderBottom: "1px solid var(--line)", padding: "12px 0" }}>
             {editingId === user.id ? (
               <div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto auto", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto auto auto", gap: 8 }}>
                   <input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="Email" />
                   <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Имя" />
                   <input value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="Новый пароль (необязательно)" type="password" />
                   <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", fontSize: "0.9em" }}>
                     <input type="checkbox" checked={editIsAdmin} onChange={(e) => setEditIsAdmin(e.target.checked)} />
                     Admin
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", fontSize: "0.9em", color: editIsBlocked ? "var(--error, #ef4444)" : undefined }}>
+                    <input type="checkbox" checked={editIsBlocked} onChange={(e) => setEditIsBlocked(e.target.checked)} />
+                    Заблокирован
                   </label>
                   <button className="btn btn-primary btn-sm" onClick={() => updateUser.mutate(user.id)} disabled={updateUser.isPending}>Сохранить</button>
                   <button className="btn btn-secondary btn-sm" onClick={() => setEditingId(null)}>Отмена</button>
@@ -2193,19 +2273,31 @@ const AdminUsersPage = () => {
             ) : (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <strong>{user.email}</strong>
                     {user.name && <span className="muted" style={{ fontSize: "0.9em" }}>{user.name}</span>}
                     {user.isAdmin && <span className="badge badge-admin">ADMIN</span>}
+                    {user.isBlocked && <span className="badge badge-failed">ЗАБЛОКИРОВАН</span>}
                   </div>
                   <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.8em" }}>
-                    Создан: {new Date(user.createdAt).toLocaleDateString("ru")}
+                    Зарегистрирован: {new Date(user.createdAt).toLocaleDateString("ru")}
+                    {" · "}сессий: {user.loginCount}
+                    {" · "}последняя активность: {user.lastActiveAt ? new Date(user.lastActiveAt).toLocaleString("ru") : "—"}
                     {" · "}встречи: {user._count.createdMeetings}
-                    {" · "}spaces: {user._count.memberships}
                   </p>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                   <button className="btn btn-secondary btn-sm" onClick={() => startEdit(user)}>Редактировать</button>
+                  <button
+                    className={`btn btn-sm ${user.isBlocked ? "btn-secondary" : "btn-danger"}`}
+                    onClick={() => {
+                      api.patch(`/admin/users/${user.id}`, { isBlocked: !user.isBlocked })
+                        .then(() => queryClient.invalidateQueries({ queryKey: ["admin-users"] }));
+                    }}
+                    title={user.isBlocked ? "Разблокировать" : "Заблокировать"}
+                  >
+                    {user.isBlocked ? "Разблокировать" : "Заблокировать"}
+                  </button>
                   <button
                     className="btn btn-danger btn-sm"
                     onClick={() => {
@@ -2242,16 +2334,24 @@ const HelpPage = () => (
       <h2 style={{ margin: "0 0 24px" }}>Инструкция по использованию</h2>
 
       <HelpSection title="1. Регистрация и вход">
+        <p style={{ margin: "0 0 8px", lineHeight: 1.7 }}>
+          Перейдите на сайт и нажмите <strong>«Зарегистрироваться»</strong> — введите email, пароль и отметьте согласие с политикой конфиденциальности.
+        </p>
+        <p style={{ margin: "0 0 8px", lineHeight: 1.7 }}>
+          После регистрации на указанный email придёт письмо со ссылкой для подтверждения. Войти в продукт можно только после перехода по этой ссылке.
+        </p>
         <p style={{ margin: 0, lineHeight: 1.7 }}>
-          Перейдите на сайт и нажмите <strong>«Зарегистрироваться»</strong> — введите email и пароль.
-          Если аккаунт уже есть, нажмите <strong>«Войти»</strong>.
+          Если аккаунт уже есть, нажмите <strong>«Войти»</strong>. Забыли пароль — воспользуйтесь ссылкой <strong>«Забыли пароль?»</strong> на странице входа.
         </p>
       </HelpSection>
 
       <HelpSection title="2. Список встреч">
         <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.8 }}>
-          <li>Сортировка по названию — кнопки <strong>А–Я</strong> / <strong>Я–А</strong></li>
-          <li>Удаление встречи — иконка корзины</li>
+          <li>Каждая карточка показывает дату транскрибации, количество задач и спикеров</li>
+          <li>Сортировка по названию — кнопка <strong>А–Я / Я–А</strong></li>
+          <li>Сортировка по дате транскрибации — кнопка <strong>Дата транскрибации</strong>; встречи без транскрипции остаются в конце</li>
+          <li>Повторный клик по активной кнопке сортировки меняет направление</li>
+          <li>Удаление встречи — меню <strong>«⋯»</strong> в карточке</li>
           <li>Рекомендуется начинать название с даты: <code style={{ background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4 }}>27-05-2026 Встреча с клиентом</code> — это позволяет сортировать хронологически</li>
         </ul>
       </HelpSection>
@@ -2259,16 +2359,19 @@ const HelpPage = () => (
       <HelpSection title="3. Создание встречи">
         <p style={{ margin: 0, lineHeight: 1.7 }}>
           Нажмите <strong>«Новая встреча»</strong>, введите название, нажмите <strong>«Создать»</strong>.
-          После этого загрузите аудио или видеофайл.
+          После этого загрузите аудио или видеофайл для транскрибации.
         </p>
       </HelpSection>
 
-      <HelpSection title="4. Загрузка файла">
+      <HelpSection title="4. Загрузка файла и транскрибация">
         <p style={{ margin: "0 0 8px", lineHeight: 1.7 }}>
-          Откройте встречу и нажмите <strong>«Загрузить файл»</strong>. После загрузки начнётся автоматическая обработка (обычно 1–5 минут). Страница обновляется автоматически.
+          Откройте встречу и нажмите <strong>«Загрузить аудио/видео»</strong>, выберите файл, затем нажмите <strong>«Транскрибировать»</strong>. После загрузки начнётся автоматическая обработка (обычно 1–5 минут). Страница обновляется автоматически.
+        </p>
+        <p style={{ margin: "0 0 8px", lineHeight: 1.7 }}>
+          После завершения в шапке встречи появится <strong>дата транскрибации</strong> — она также отображается в списке встреч.
         </p>
         <p style={{ margin: 0, fontSize: "0.85em", color: "var(--muted)" }}>
-          Поддерживаемые форматы: MP3, WAV, M4A, MP4, WebM, OGG, FLAC, AAC
+          Поддерживаемые форматы: MP3, WAV, M4A, MP4, WebM, OGG, FLAC, AAC, MKV
         </p>
       </HelpSection>
 
@@ -2308,7 +2411,10 @@ const HelpPage = () => (
 
       <HelpSection title="6. Частые вопросы">
         {[
-          ["Встреча долго обрабатывается", "Страница обновляется автоматически — просто подождите."],
+          ["Письмо с подтверждением не пришло", "Проверьте папку «Спам». Если письма нет — обратитесь к администратору."],
+          ["Не могу войти после регистрации", "Убедитесь, что перешли по ссылке из письма для подтверждения email."],
+          ["Встреча долго обрабатывается", "Страница обновляется автоматически — просто подождите. Обычно обработка занимает 1–5 минут."],
+          ["Дата транскрибации не отображается", "Дата появляется только после завершения транскрибации. Загрузите аудио/видео файл и дождитесь окончания обработки."],
           ["Спикеры определены неправильно", "Вкладка «Транскрипция» → кнопка «Редактировать» → исправьте вручную."],
           ["Нужного спикера нет в списке", "Вкладка «Спикеры» → форма внизу → добавьте спикера вручную."],
           ["Саммари на неправильном языке", "Саммари генерируется на языке аудиозаписи."],
@@ -2322,6 +2428,107 @@ const HelpPage = () => (
     </section>
   </AppShell>
 );
+
+// ── PrivacyPolicyPage ──────────────────────────────────────────────────────
+
+const PrivacyPolicyPage = () => (
+  <div style={{ maxWidth: 720, margin: "40px auto", padding: "0 24px" }}>
+    <div className="card">
+      <h1 style={{ margin: "0 0 8px", fontSize: "1.4em" }}>Политика конфиденциальности</h1>
+      <p style={{ margin: "0 0 24px", color: "var(--muted)", fontSize: "0.85em" }}>
+        AI Meet Factory
+      </p>
+      <p style={{ color: "var(--muted)", lineHeight: 1.7 }}>
+        Содержание политики конфиденциальности будет добавлено позже.
+      </p>
+      <div style={{ marginTop: 24 }}>
+        <Link to="/register" style={{ fontSize: "0.85em" }}>← Вернуться к регистрации</Link>
+      </div>
+    </div>
+  </div>
+);
+
+// ── PersonalDataPage ───────────────────────────────────────────────────────
+
+const PersonalDataPage = () => (
+  <div style={{ maxWidth: 720, margin: "40px auto", padding: "0 24px" }}>
+    <div className="card">
+      <h1 style={{ margin: "0 0 8px", fontSize: "1.4em" }}>Условия обработки персональных данных</h1>
+      <p style={{ margin: "0 0 24px", color: "var(--muted)", fontSize: "0.85em" }}>
+        AI Meet Factory
+      </p>
+      <p style={{ color: "var(--muted)", lineHeight: 1.7 }}>
+        Содержание условий обработки персональных данных будет добавлено позже.
+      </p>
+      <div style={{ marginTop: 24 }}>
+        <Link to="/register" style={{ fontSize: "0.85em" }}>← Вернуться к регистрации</Link>
+      </div>
+    </div>
+  </div>
+);
+
+// ── VerifyEmailPage ────────────────────────────────────────────────────────
+
+const VerifyEmailPage = () => {
+  const navigate = useNavigate();
+  const token = new URLSearchParams(window.location.search).get("token") ?? "";
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["verify-email", token],
+    queryFn: async () => {
+      const response = await api.get(`/auth/verify-email?token=${encodeURIComponent(token)}`);
+      return response.data as { token: string };
+    },
+    enabled: !!token,
+    retry: false,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (data) {
+      saveToken(data.token);
+      setTimeout(() => navigate("/meetings"), 2000);
+    }
+  }, [data, navigate]);
+
+  if (!token) {
+    return (
+      <div className="auth-wrap">
+        <div className="card auth-card" style={{ textAlign: "center" }}>
+          <p className="error">Ссылка для подтверждения недействительна.</p>
+          <Link to="/register">Зарегистрироваться заново</Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="auth-wrap">
+      <div className="card auth-card" style={{ textAlign: "center" }}>
+        <BookOpen size={32} color="var(--accent)" />
+        {isLoading && (
+          <p style={{ margin: "14px 0 0", color: "var(--muted)" }}>Подтверждение email…</p>
+        )}
+        {data && (
+          <>
+            <h2 style={{ margin: "10px 0 4px", fontSize: "1.3em" }}>Email подтверждён!</h2>
+            <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.9em" }}>
+              Перенаправление в приложение…
+            </p>
+          </>
+        )}
+        {isError && (
+          <>
+            <p className="error" style={{ margin: "14px 0 8px" }}>
+              Ссылка устарела или недействительна.
+            </p>
+            <Link to="/register" style={{ fontSize: "0.85em" }}>Зарегистрироваться заново</Link>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ── Guard ──────────────────────────────────────────────────────────────────
 
@@ -2340,6 +2547,9 @@ export const App = () => (
     <Route path="/register" element={<AuthPage mode="register" />} />
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     <Route path="/reset-password" element={<ResetPasswordPage />} />
+    <Route path="/verify-email" element={<VerifyEmailPage />} />
+    <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+    <Route path="/personal-data" element={<PersonalDataPage />} />
     <Route path="/help" element={<Guard><HelpPage /></Guard>} />
     <Route path="/meetings" element={<Guard><MeetingsPage /></Guard>} />
     <Route path="/meetings/:meetingId" element={<Guard><MeetingDetailsPage /></Guard>} />

@@ -5,7 +5,7 @@ import { config } from "../config";
 import { hashPassword, verifyPassword } from "../lib/hash";
 import { signToken, type AuthPayload } from "../lib/jwt";
 import { sendMail } from "../lib/mailer";
-import type { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto } from "../dto/auth";
+import type { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, VerifyEmailDto } from "../dto/auth";
 
 const pickActiveWorkspaceId = (
   memberships: Array<{ workspaceId: string; role: MembershipRole; workspace: { kind: WorkspaceKind } }>,
@@ -21,18 +21,23 @@ const pickActiveWorkspaceId = (
 };
 
 export const authService = {
-  async register(payload: RegisterDto): Promise<{ token: string; user: { id: string; email: string; name: string | null; workspaceId: string } }> {
+  async register(payload: RegisterDto): Promise<{ pending: true; email: string }> {
     const existing = await prisma.user.findUnique({ where: { email: payload.email } });
     if (existing) {
       throw new Error("EMAIL_ALREADY_REGISTERED");
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const verifyToken = crypto.randomBytes(32).toString("hex");
+    const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           email: payload.email,
           name: payload.name ?? null,
           passwordHash: await hashPassword(payload.password),
+          emailVerifyToken: verifyToken,
+          emailVerifyExpires: verifyExpires,
         },
       });
 
@@ -51,14 +56,17 @@ export const authService = {
           role: MembershipRole.OWNER,
         },
       });
-
-      return {
-        token: signToken({ userId: user.id, workspaceId: workspace.id, isAdmin: user.isAdmin }),
-        user: { id: user.id, email: user.email, name: user.name, workspaceId: workspace.id },
-      };
     });
 
-    return result;
+    const verifyUrl = `${config.appUrl}/verify-email?token=${verifyToken}`;
+    await sendMail({
+      to: payload.email,
+      subject: "Подтвердите email — AI Meet Factory",
+      text: `Добро пожаловать в AI Meet Factory!\nБлагодарим за выбор нашего сервиса и желаем продуктивной работы.\nЕсли понадобится помощь — мы всегда рядом.\n\nДля подтверждения email перейдите по ссылке:\n\n${verifyUrl}\n\nСсылка действует 24 часа. Если вы не регистрировались — проигнорируйте это письмо.`,
+      html: `<p>Добро пожаловать в AI Meet Factory!<br>Благодарим за выбор нашего сервиса и желаем продуктивной работы.<br>Если понадобится помощь — мы всегда рядом.</p><p>Для подтверждения email перейдите по ссылке:</p><p><a href="${verifyUrl}">Зарегистрироваться в AI Meet Factory</a></p><p>Ссылка действует 24 часа. Если вы не регистрировались — проигнорируйте это письмо.</p>`,
+    });
+
+    return { pending: true, email: payload.email };
   },
 
   async login(payload: LoginDto): Promise<{ token: string; user: { id: string; email: string; name: string | null; workspaceId: string } }> {
@@ -83,6 +91,19 @@ export const authService = {
     if (!valid) {
       throw new Error("INVALID_CREDENTIALS");
     }
+
+    if (!user.emailVerified) {
+      throw new Error("EMAIL_NOT_VERIFIED");
+    }
+
+    if (user.isBlocked) {
+      throw new Error("USER_BLOCKED");
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { loginCount: { increment: 1 }, lastActiveAt: new Date() },
+    });
 
     const workspaceId = pickActiveWorkspaceId(user.memberships);
     if (!workspaceId) {
@@ -144,6 +165,36 @@ export const authService = {
     });
   },
 
+  async verifyEmail(payload: VerifyEmailDto): Promise<{ token: string; user: { id: string; email: string; name: string | null; workspaceId: string } }> {
+    const user = await prisma.user.findUnique({
+      where: { emailVerifyToken: payload.token },
+      include: {
+        memberships: {
+          include: { workspace: { select: { kind: true } } },
+        },
+      },
+    });
+
+    if (!user || !user.emailVerifyExpires || user.emailVerifyExpires < new Date()) {
+      throw new Error("INVALID_OR_EXPIRED_TOKEN");
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true, emailVerifyToken: null, emailVerifyExpires: null },
+    });
+
+    const workspaceId = pickActiveWorkspaceId(user.memberships);
+    if (!workspaceId) {
+      throw new Error("NO_WORKSPACE_MEMBERSHIP");
+    }
+
+    return {
+      token: signToken({ userId: user.id, workspaceId, isAdmin: user.isAdmin }),
+      user: { id: user.id, email: user.email, name: user.name, workspaceId },
+    };
+  },
+
   async getSession(auth: AuthPayload): Promise<{ user: { id: string; email: string; name: string | null; isAdmin: boolean }; workspaceId: string } | null> {
     const membership = await prisma.membership.findUnique({
       where: {
@@ -153,16 +204,21 @@ export const authService = {
         },
       },
       include: {
-        user: { select: { id: true, email: true, name: true, isAdmin: true } },
+        user: { select: { id: true, email: true, name: true, isAdmin: true, isBlocked: true } },
       },
     });
 
-    if (!membership) {
+    if (!membership || membership.user.isBlocked) {
       return null;
     }
 
+    await prisma.user.update({
+      where: { id: auth.userId },
+      data: { lastActiveAt: new Date() },
+    });
+
     return {
-      user: membership.user,
+      user: { id: membership.user.id, email: membership.user.email, name: membership.user.name, isAdmin: membership.user.isAdmin },
       workspaceId: membership.workspaceId,
     };
   },

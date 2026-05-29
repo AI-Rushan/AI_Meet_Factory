@@ -18,6 +18,7 @@ const updateUserSchema = z.object({
   email: z.string().email().optional(),
   name: z.string().min(1).max(120).nullable().optional(),
   isAdmin: z.boolean().optional(),
+  isBlocked: z.boolean().optional(),
   password: z.string().min(6).optional(),
 });
 
@@ -257,6 +258,9 @@ adminRouter.get("/users", async (req, res) => {
       email: true,
       name: true,
       isAdmin: true,
+      isBlocked: true,
+      lastActiveAt: true,
+      loginCount: true,
       createdAt: true,
       _count: { select: { memberships: true, createdMeetings: true } },
     },
@@ -327,7 +331,7 @@ adminRouter.patch("/users/:userId", async (req, res) => {
     return;
   }
 
-  const { email, name, isAdmin, password } = parsed.data;
+  const { email, name, isAdmin, isBlocked, password } = parsed.data;
 
   if (email) {
     const conflict = await prisma.user.findFirst({
@@ -343,13 +347,14 @@ adminRouter.patch("/users/:userId", async (req, res) => {
   if (email !== undefined) updateData.email = email;
   if (name !== undefined) updateData.name = name;
   if (isAdmin !== undefined) updateData.isAdmin = isAdmin;
+  if (isBlocked !== undefined) updateData.isBlocked = isBlocked;
   if (password) updateData.passwordHash = await hashPassword(password);
 
   try {
     const user = await prisma.user.update({
       where: { id: req.params.userId },
       data: updateData,
-      select: { id: true, email: true, name: true, isAdmin: true, createdAt: true },
+      select: { id: true, email: true, name: true, isAdmin: true, isBlocked: true, lastActiveAt: true, loginCount: true, createdAt: true },
     });
     res.json(user);
   } catch {
