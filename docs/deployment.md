@@ -289,8 +289,8 @@ git pull origin main
 /opt/meeting-ai/node_modules/.pnpm/node_modules/.bin/tsc \
   -p /opt/meeting-ai/packages/shared/tsconfig.json
 
-# Применить новые миграции БД
-cd apps/backend && npx prisma migrate deploy && cd ../..
+# Применить новые миграции БД и обновить Prisma Client (обязательно оба шага)
+cd apps/backend && npx prisma migrate deploy && npx prisma generate && cd ../..
 
 # Пересобрать фронтенд
 cd apps/frontend && pnpm build && cd ../..
