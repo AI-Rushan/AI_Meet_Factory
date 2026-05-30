@@ -18,6 +18,7 @@ export const config = {
   gladiaApiKey: process.env.GLADIA_API_KEY ?? "",
   deepgramApiKey: process.env.DEEPGRAM_API_KEY ?? "",
   assemblyAiApiKey: process.env.ASSEMBLYAI_API_KEY ?? "",
+  openrouterApiKey: process.env.OPENROUTER_API_KEY ?? "",
   whisperLocalUrl: process.env.WHISPER_LOCAL_URL ?? "http://localhost:8080",
   // Other integrations
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",

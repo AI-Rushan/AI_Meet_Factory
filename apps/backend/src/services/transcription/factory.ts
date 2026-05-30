@@ -7,6 +7,7 @@ import { GroqTranscriptionProvider } from "./providers/groqTranscriptionProvider
 import { MockTranscriptionProvider } from "./providers/mockTranscriptionProvider";
 import { OllamaTranscriptionProvider } from "./providers/ollamaTranscriptionProvider";
 import { OpenAITranscriptionProvider } from "./providers/openaiTranscriptionProvider";
+import { OpenRouterTranscriptionProvider } from "./providers/openrouterTranscriptionProvider";
 import { WhisperLocalProvider } from "./providers/whisperLocalProvider";
 import { TranscriptionAdapter } from "./types";
 
@@ -21,6 +22,8 @@ export const getTranscriptionProvider = (providerName?: string): TranscriptionAd
     case "whisper-local": return new WhisperLocalProvider();
     case "ollama":        return new OllamaTranscriptionProvider();
     case "gemini":        return new GeminiTranscriptionProvider();
+    case "openrouter-gemini-flash":  return new OpenRouterTranscriptionProvider("google/gemini-2.0-flash");
+    case "openrouter-gemini3-flash": return new OpenRouterTranscriptionProvider("google/gemini-3-flash-preview");
     default:              return new MockTranscriptionProvider();
   }
 };
